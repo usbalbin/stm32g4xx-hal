@@ -10,7 +10,7 @@ jobs:
       matrix:
         rust:
           - stable
-        feature:
+        device:
           - stm32g431
           - stm32g441
           - stm32g471
@@ -18,6 +18,13 @@ jobs:
           - stm32g474
           - stm32g483
           - stm32g484
+          - stm32g491
+          - stm32g4a1
+        features:
+          - rt,embedded-can-03,unstable-defmt
+          - log-rtt,defmt
+          - log-itm
+          - log-semihost
 
     steps:
       - uses: actions/checkout@v2
@@ -29,4 +36,6 @@ jobs:
           override: true
 
       - name: Regular build
-        run: cargo check --features ${{ matrix.feature }}
+        run: cargo check --features ${{ matrix.device }} --features ${{ matrix.features }}
+      - name: Build examples
+        run: cargo check --examples --features ${{ matrix.device }} --features ${{ matrix.features }}
