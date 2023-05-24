@@ -23,6 +23,7 @@ jobs:
         features:
           - rt,embedded-can-03,unstable-defmt
           - log-rtt,defmt
+          # TODO: -log-rtt # log-rtt without defmt, more combos?
           - log-itm
           - log-semihost
 
