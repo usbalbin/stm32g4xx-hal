@@ -21,7 +21,7 @@ jobs:
           - stm32g491
           - stm32g4a1
         features:
-          - rt,unstable-defmt
+          - rt
           - log-rtt,defmt
           # TODO: -log-rtt # log-rtt without defmt, more combos?
           - log-itm
