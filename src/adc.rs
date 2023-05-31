@@ -2351,6 +2351,9 @@ adc_pins!(
     feature = "stm32g484",
 ))]
 adc_op!(
+    // TODO: Add all opamp types: Follower, OpenLoop
+    // TODO: Should we restrict type parameters A and B?
+
     opamp::opamp1::Pga<A, B> => (ADC1, 3),
 
     opamp::opamp2::Pga<A, B> => (ADC2, 3),
