@@ -55,7 +55,6 @@ cfg_if::cfg_if! {
         impl log::Log for Logger {
             fn enabled(&self, metadata: &Metadata) -> bool {
                 metadata.level() <= self.level
-
             }
 
             fn log(&self, record: &Record) {

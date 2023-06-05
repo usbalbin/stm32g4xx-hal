@@ -7,7 +7,7 @@ use panic_probe as _;
 
 use stm32g4 as _;
 
-use defmt::Format;
+
 
 #[defmt::panic_handler]
 fn panic() -> ! {
