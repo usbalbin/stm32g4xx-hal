@@ -7,8 +7,6 @@ use panic_probe as _;
 
 use stm32g4 as _;
 
-
-
 #[defmt::panic_handler]
 fn panic() -> ! {
     cortex_m::asm::udf()
