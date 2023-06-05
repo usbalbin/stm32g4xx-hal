@@ -9,11 +9,15 @@ use hal::gpio::AF6;
 use hal::prelude::*;
 use hal::stm32;
 use stm32g4xx_hal as hal;
-mod utils;
 extern crate cortex_m_rt as rt;
+
+#[macro_use]
+mod utils;
 
 #[entry]
 fn main() -> ! {
+    utils::logger::init();
+
     let dp = stm32::Peripherals::take().expect("cannot take peripherals");
     let mut rcc = dp.RCC.constrain();
     let gpioa = dp.GPIOA.split(&mut rcc);
