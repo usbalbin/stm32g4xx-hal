@@ -19,12 +19,9 @@ use hal::time::RateExtU32;
 use hal::timer::Timer;
 use stm32g4xx_hal as hal;
 
-use embedded_sdmmc::{
-    TimeSource, Timestamp,
-};
+use embedded_sdmmc::{TimeSource, Timestamp};
 
 use cortex_m_rt::entry;
-
 
 #[macro_use]
 mod utils;
