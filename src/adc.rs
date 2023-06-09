@@ -2154,6 +2154,442 @@ macro_rules! adc {
     };
 }
 
+/// A pair of Adc converters (A, B)
+///
+/// This is useful when having generic types or functions which
+/// take two analog pins which may or may not use the same ADC. By combining two
+/// converters we get a type that implements OneShot for both pins
+pub struct AdcPair<A, B>(pub A, pub B);
+
+macro_rules! impl_oneshot_for_tuple {
+    ($adc_type_a:ident, $member:tt, $t:ty) => {
+        impl<PIN> OneShot<stm32::$adc_type_a, u16, PIN> for $t
+        where
+            PIN: Channel<stm32::$adc_type_a, ID = u8>,
+        {
+            type Error = ();
+
+            fn read(&mut self, pin: &mut PIN) -> nb::Result<u16, Self::Error> {
+                let adc = &mut self.$member;
+                Ok(adc.convert(pin, adc.adc.config.default_sample_time))
+            }
+        }
+    };
+}
+
+macro_rules! impl_oneshot_for_pair {
+    ($(($adc_type_a:ident, $adc_type_b:ident),)+) => {$(
+        impl_oneshot_for_tuple!($adc_type_a, 0, AdcPair<
+            &mut Adc<stm32::$adc_type_a, Disabled>,
+            &mut Adc<stm32::$adc_type_b, Disabled>
+        >);
+        impl_oneshot_for_tuple!($adc_type_b, 1, AdcPair<
+            &mut Adc<stm32::$adc_type_a, Disabled>,
+            &mut Adc<stm32::$adc_type_b, Disabled>
+        >);
+
+        impl_oneshot_for_tuple!($adc_type_a, 0, AdcPair<
+            Adc<stm32::$adc_type_a, Disabled>,
+            Adc<stm32::$adc_type_b, Disabled>
+        >);
+        impl_oneshot_for_tuple!($adc_type_b, 1, AdcPair<
+            Adc<stm32::$adc_type_a, Disabled>,
+            Adc<stm32::$adc_type_b, Disabled>
+        >);
+    )+};
+}
+
+#[cfg(any(
+    feature = "stm32g431",
+    feature = "stm32g441",
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g4a1",
+))]
+impl_oneshot_for_pair!((ADC1, ADC2), (ADC2, ADC1),);
+
+#[cfg(any(
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g4a1",
+))]
+impl_oneshot_for_pair!((ADC1, ADC3), (ADC2, ADC3), (ADC3, ADC1), (ADC3, ADC2),);
+
+#[cfg(any(
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+))]
+impl_oneshot_for_pair!(
+    (ADC1, ADC4),
+    (ADC1, ADC5),
+    (ADC2, ADC4),
+    (ADC2, ADC5),
+    (ADC3, ADC4),
+    (ADC3, ADC5),
+    (ADC4, ADC1),
+    (ADC4, ADC2),
+    (ADC4, ADC3),
+    (ADC4, ADC5),
+    (ADC5, ADC1),
+    (ADC5, ADC2),
+    (ADC5, ADC3),
+    (ADC5, ADC4),
+);
+
+/// A triple of Adc converters (A, B, C)
+///
+/// This is useful when having generic types or functions which
+/// take three analog pins which may or may not use the same ADC. By combining
+/// three converters we get a type that implements OneShot for all pins
+#[cfg(any(
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g4a1",
+))]
+pub struct AdcTriple<A, B, C>(pub A, pub B, pub C);
+
+#[cfg(any(
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g4a1",
+))]
+macro_rules! impl_oneshot_for_triple {
+    ($(($adc_type_a:ident, $adc_type_b:ident, $adc_type_c:ident),)+) => {$(
+        impl_oneshot_for_tuple!($adc_type_a, 0, AdcTriple<
+            &mut Adc<stm32::$adc_type_a, Disabled>,
+            &mut Adc<stm32::$adc_type_b, Disabled>,
+            &mut Adc<stm32::$adc_type_c, Disabled>
+        >);
+        impl_oneshot_for_tuple!($adc_type_b, 1, AdcTriple<
+            &mut Adc<stm32::$adc_type_a, Disabled>,
+            &mut Adc<stm32::$adc_type_b, Disabled>,
+            &mut Adc<stm32::$adc_type_c, Disabled>
+        >);
+        impl_oneshot_for_tuple!($adc_type_c, 2, AdcTriple<
+            &mut Adc<stm32::$adc_type_a, Disabled>,
+            &mut Adc<stm32::$adc_type_b, Disabled>,
+            &mut Adc<stm32::$adc_type_c, Disabled>
+        >);
+
+        impl_oneshot_for_tuple!($adc_type_a, 0, AdcTriple<
+            Adc<stm32::$adc_type_a, Disabled>,
+            Adc<stm32::$adc_type_b, Disabled>,
+            Adc<stm32::$adc_type_c, Disabled>
+        >);
+        impl_oneshot_for_tuple!($adc_type_b, 1, AdcTriple<
+            Adc<stm32::$adc_type_a, Disabled>,
+            Adc<stm32::$adc_type_b, Disabled>,
+            Adc<stm32::$adc_type_c, Disabled>
+        >);
+        impl_oneshot_for_tuple!($adc_type_c, 2, AdcTriple<
+            Adc<stm32::$adc_type_a, Disabled>,
+            Adc<stm32::$adc_type_b, Disabled>,
+            Adc<stm32::$adc_type_c, Disabled>
+        >);
+    )+};
+}
+
+#[cfg(any(
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g4a1",
+))]
+impl_oneshot_for_triple!(
+    (ADC1, ADC2, ADC3),
+    (ADC1, ADC3, ADC2),
+    (ADC2, ADC1, ADC3),
+    (ADC2, ADC3, ADC1),
+    (ADC3, ADC1, ADC2),
+    (ADC3, ADC2, ADC1),
+);
+
+#[cfg(any(
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+))]
+impl_oneshot_for_triple!(
+    (ADC1, ADC2, ADC4),
+    (ADC1, ADC2, ADC5),
+    (ADC1, ADC3, ADC4),
+    (ADC1, ADC3, ADC5),
+    (ADC1, ADC4, ADC2),
+    (ADC1, ADC4, ADC3),
+    (ADC1, ADC4, ADC5),
+    (ADC1, ADC5, ADC2),
+    (ADC1, ADC5, ADC3),
+    (ADC1, ADC5, ADC4),
+    (ADC2, ADC1, ADC4),
+    (ADC2, ADC1, ADC5),
+    (ADC2, ADC3, ADC4),
+    (ADC2, ADC3, ADC5),
+    (ADC2, ADC4, ADC1),
+    (ADC2, ADC4, ADC3),
+    (ADC2, ADC4, ADC5),
+    (ADC2, ADC5, ADC1),
+    (ADC2, ADC5, ADC3),
+    (ADC2, ADC5, ADC4),
+    (ADC3, ADC1, ADC4),
+    (ADC3, ADC1, ADC5),
+    (ADC3, ADC2, ADC4),
+    (ADC3, ADC2, ADC5),
+    (ADC3, ADC4, ADC1),
+    (ADC3, ADC4, ADC2),
+    (ADC3, ADC4, ADC5),
+    (ADC3, ADC5, ADC1),
+    (ADC3, ADC5, ADC2),
+    (ADC3, ADC5, ADC4),
+    (ADC4, ADC1, ADC2),
+    (ADC4, ADC1, ADC3),
+    (ADC4, ADC1, ADC5),
+    (ADC4, ADC2, ADC1),
+    (ADC4, ADC2, ADC3),
+    (ADC4, ADC2, ADC5),
+    (ADC4, ADC3, ADC1),
+    (ADC4, ADC3, ADC2),
+    (ADC4, ADC3, ADC5),
+    (ADC4, ADC5, ADC1),
+    (ADC4, ADC5, ADC2),
+    (ADC4, ADC5, ADC3),
+    (ADC5, ADC1, ADC2),
+    (ADC5, ADC1, ADC3),
+    (ADC5, ADC1, ADC4),
+    (ADC5, ADC2, ADC1),
+    (ADC5, ADC2, ADC3),
+    (ADC5, ADC2, ADC4),
+    (ADC5, ADC3, ADC1),
+    (ADC5, ADC3, ADC2),
+    (ADC5, ADC3, ADC4),
+    (ADC5, ADC4, ADC1),
+    (ADC5, ADC4, ADC2),
+    (ADC5, ADC4, ADC3),
+);
+
+/// A quad of Adc converters (A, B, C, D)
+///
+/// This is useful when having generic types or functions which
+/// take four analog pins which may or may not use the same ADC. By combining
+/// four converters we get a type that implements OneShot for all pins
+#[cfg(any(
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+))]
+pub struct AdcQuad<A, B, C, D>(pub A, pub B, pub C, pub D);
+
+#[cfg(any(
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+))]
+macro_rules! impl_oneshot_for_quad {
+    ($(($adc_type_a:ident, $adc_type_b:ident, $adc_type_c:ident, $adc_type_d:ident),)+) => {$(
+        impl_oneshot_for_tuple!($adc_type_a, 0, AdcQuad<
+            &mut Adc<stm32::$adc_type_a, Disabled>,
+            &mut Adc<stm32::$adc_type_b, Disabled>,
+            &mut Adc<stm32::$adc_type_c, Disabled>,
+            &mut Adc<stm32::$adc_type_d, Disabled>
+        >);
+        impl_oneshot_for_tuple!($adc_type_b, 1, AdcQuad<
+            &mut Adc<stm32::$adc_type_a, Disabled>,
+            &mut Adc<stm32::$adc_type_b, Disabled>,
+            &mut Adc<stm32::$adc_type_c, Disabled>,
+            &mut Adc<stm32::$adc_type_d, Disabled>,
+        >);
+        impl_oneshot_for_tuple!($adc_type_c, 2, AdcQuad<
+            &mut Adc<stm32::$adc_type_a, Disabled>,
+            &mut Adc<stm32::$adc_type_b, Disabled>,
+            &mut Adc<stm32::$adc_type_c, Disabled>,
+            &mut Adc<stm32::$adc_type_d, Disabled>,
+        >);
+        impl_oneshot_for_tuple!($adc_type_d, 3, AdcQuad<
+            &mut Adc<stm32::$adc_type_a, Disabled>,
+            &mut Adc<stm32::$adc_type_b, Disabled>,
+            &mut Adc<stm32::$adc_type_c, Disabled>,
+            &mut Adc<stm32::$adc_type_d, Disabled>
+        >);
+
+        impl_oneshot_for_tuple!($adc_type_a, 0, AdcQuad<
+            Adc<stm32::$adc_type_a, Disabled>,
+            Adc<stm32::$adc_type_b, Disabled>,
+            Adc<stm32::$adc_type_c, Disabled>,
+            Adc<stm32::$adc_type_d, Disabled>
+        >);
+        impl_oneshot_for_tuple!($adc_type_b, 1, AdcQuad<
+            Adc<stm32::$adc_type_a, Disabled>,
+            Adc<stm32::$adc_type_b, Disabled>,
+            Adc<stm32::$adc_type_c, Disabled>,
+            Adc<stm32::$adc_type_d, Disabled>,
+        >);
+        impl_oneshot_for_tuple!($adc_type_c, 2, AdcQuad<
+            Adc<stm32::$adc_type_a, Disabled>,
+            Adc<stm32::$adc_type_b, Disabled>,
+            Adc<stm32::$adc_type_c, Disabled>,
+            Adc<stm32::$adc_type_d, Disabled>,
+        >);
+        impl_oneshot_for_tuple!($adc_type_d, 3, AdcQuad<
+            Adc<stm32::$adc_type_a, Disabled>,
+            Adc<stm32::$adc_type_b, Disabled>,
+            Adc<stm32::$adc_type_c, Disabled>,
+            Adc<stm32::$adc_type_d, Disabled>
+        >);
+    )+};
+}
+
+#[cfg(any(
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+))]
+impl_oneshot_for_quad!(
+    (ADC1, ADC2, ADC3, ADC4),
+    (ADC1, ADC2, ADC3, ADC5),
+    (ADC1, ADC2, ADC4, ADC3),
+    (ADC1, ADC2, ADC4, ADC5),
+    (ADC1, ADC2, ADC5, ADC3),
+    (ADC1, ADC2, ADC5, ADC4),
+    (ADC1, ADC3, ADC2, ADC4),
+    (ADC1, ADC3, ADC2, ADC5),
+    (ADC1, ADC3, ADC4, ADC2),
+    (ADC1, ADC3, ADC4, ADC5),
+    (ADC1, ADC3, ADC5, ADC2),
+    (ADC1, ADC3, ADC5, ADC4),
+    (ADC1, ADC4, ADC2, ADC3),
+    (ADC1, ADC4, ADC2, ADC5),
+    (ADC1, ADC4, ADC3, ADC2),
+    (ADC1, ADC4, ADC3, ADC5),
+    (ADC1, ADC4, ADC5, ADC2),
+    (ADC1, ADC4, ADC5, ADC3),
+    (ADC1, ADC5, ADC2, ADC3),
+    (ADC1, ADC5, ADC2, ADC4),
+    (ADC1, ADC5, ADC3, ADC2),
+    (ADC1, ADC5, ADC3, ADC4),
+    (ADC1, ADC5, ADC4, ADC2),
+    (ADC1, ADC5, ADC4, ADC3),
+    (ADC2, ADC1, ADC3, ADC4),
+    (ADC2, ADC1, ADC3, ADC5),
+    (ADC2, ADC1, ADC4, ADC3),
+    (ADC2, ADC1, ADC4, ADC5),
+    (ADC2, ADC1, ADC5, ADC3),
+    (ADC2, ADC1, ADC5, ADC4),
+    (ADC2, ADC3, ADC1, ADC4),
+    (ADC2, ADC3, ADC1, ADC5),
+    (ADC2, ADC3, ADC4, ADC1),
+    (ADC2, ADC3, ADC4, ADC5),
+    (ADC2, ADC3, ADC5, ADC1),
+    (ADC2, ADC3, ADC5, ADC4),
+    (ADC2, ADC4, ADC1, ADC3),
+    (ADC2, ADC4, ADC1, ADC5),
+    (ADC2, ADC4, ADC3, ADC1),
+    (ADC2, ADC4, ADC3, ADC5),
+    (ADC2, ADC4, ADC5, ADC1),
+    (ADC2, ADC4, ADC5, ADC3),
+    (ADC2, ADC5, ADC1, ADC3),
+    (ADC2, ADC5, ADC1, ADC4),
+    (ADC2, ADC5, ADC3, ADC1),
+    (ADC2, ADC5, ADC3, ADC4),
+    (ADC2, ADC5, ADC4, ADC1),
+    (ADC2, ADC5, ADC4, ADC3),
+    (ADC3, ADC1, ADC2, ADC4),
+    (ADC3, ADC1, ADC2, ADC5),
+    (ADC3, ADC1, ADC4, ADC2),
+    (ADC3, ADC1, ADC4, ADC5),
+    (ADC3, ADC1, ADC5, ADC2),
+    (ADC3, ADC1, ADC5, ADC4),
+    (ADC3, ADC2, ADC1, ADC4),
+    (ADC3, ADC2, ADC1, ADC5),
+    (ADC3, ADC2, ADC4, ADC1),
+    (ADC3, ADC2, ADC4, ADC5),
+    (ADC3, ADC2, ADC5, ADC1),
+    (ADC3, ADC2, ADC5, ADC4),
+    (ADC3, ADC4, ADC1, ADC2),
+    (ADC3, ADC4, ADC1, ADC5),
+    (ADC3, ADC4, ADC2, ADC1),
+    (ADC3, ADC4, ADC2, ADC5),
+    (ADC3, ADC4, ADC5, ADC1),
+    (ADC3, ADC4, ADC5, ADC2),
+    (ADC3, ADC5, ADC1, ADC2),
+    (ADC3, ADC5, ADC1, ADC4),
+    (ADC3, ADC5, ADC2, ADC1),
+    (ADC3, ADC5, ADC2, ADC4),
+    (ADC3, ADC5, ADC4, ADC1),
+    (ADC3, ADC5, ADC4, ADC2),
+    (ADC4, ADC1, ADC2, ADC3),
+    (ADC4, ADC1, ADC2, ADC5),
+    (ADC4, ADC1, ADC3, ADC2),
+    (ADC4, ADC1, ADC3, ADC5),
+    (ADC4, ADC1, ADC5, ADC2),
+    (ADC4, ADC1, ADC5, ADC3),
+    (ADC4, ADC2, ADC1, ADC3),
+    (ADC4, ADC2, ADC1, ADC5),
+    (ADC4, ADC2, ADC3, ADC1),
+    (ADC4, ADC2, ADC3, ADC5),
+    (ADC4, ADC2, ADC5, ADC1),
+    (ADC4, ADC2, ADC5, ADC3),
+    (ADC4, ADC3, ADC1, ADC2),
+    (ADC4, ADC3, ADC1, ADC5),
+    (ADC4, ADC3, ADC2, ADC1),
+    (ADC4, ADC3, ADC2, ADC5),
+    (ADC4, ADC3, ADC5, ADC1),
+    (ADC4, ADC3, ADC5, ADC2),
+    (ADC4, ADC5, ADC1, ADC2),
+    (ADC4, ADC5, ADC1, ADC3),
+    (ADC4, ADC5, ADC2, ADC1),
+    (ADC4, ADC5, ADC2, ADC3),
+    (ADC4, ADC5, ADC3, ADC1),
+    (ADC4, ADC5, ADC3, ADC2),
+    (ADC5, ADC1, ADC2, ADC3),
+    (ADC5, ADC1, ADC2, ADC4),
+    (ADC5, ADC1, ADC3, ADC2),
+    (ADC5, ADC1, ADC3, ADC4),
+    (ADC5, ADC1, ADC4, ADC2),
+    (ADC5, ADC1, ADC4, ADC3),
+    (ADC5, ADC2, ADC1, ADC3),
+    (ADC5, ADC2, ADC1, ADC4),
+    (ADC5, ADC2, ADC3, ADC1),
+    (ADC5, ADC2, ADC3, ADC4),
+    (ADC5, ADC2, ADC4, ADC1),
+    (ADC5, ADC2, ADC4, ADC3),
+    (ADC5, ADC3, ADC1, ADC2),
+    (ADC5, ADC3, ADC1, ADC4),
+    (ADC5, ADC3, ADC2, ADC1),
+    (ADC5, ADC3, ADC2, ADC4),
+    (ADC5, ADC3, ADC4, ADC1),
+    (ADC5, ADC3, ADC4, ADC2),
+    (ADC5, ADC4, ADC1, ADC2),
+    (ADC5, ADC4, ADC1, ADC3),
+    (ADC5, ADC4, ADC2, ADC1),
+    (ADC5, ADC4, ADC2, ADC3),
+    (ADC5, ADC4, ADC3, ADC1),
+    (ADC5, ADC4, ADC3, ADC2),
+);
+
 #[cfg(any(
     feature = "stm32g431",
     feature = "stm32g441",
