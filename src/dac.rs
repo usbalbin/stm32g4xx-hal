@@ -141,10 +141,12 @@ impl_pin_for_dac!(DAC2: (PA6<DefaultMode>, Dac2IntSig1), Dac2Ch1<M_MIX_SIG, Disa
 // DAC3 int
 impl_pin_for_dac!(DAC3: Dac3IntSig1, Dac3Ch1<M_INT_SIG, Disabled>);
 impl_pin_for_dac!(DAC3: Dac3IntSig2, Dac3Ch2<M_INT_SIG, Disabled>);
+impl_pin_for_dac!(DAC3: (Dac3IntSig1, Dac3IntSig2), (Dac3Ch1<M_INT_SIG, Disabled>, Dac3Ch2<M_INT_SIG, Disabled>));
 
 // DAC4 int
 impl_pin_for_dac!(DAC4: Dac4IntSig1, Dac4Ch1<M_INT_SIG, Disabled>);
 impl_pin_for_dac!(DAC4: Dac4IntSig2, Dac4Ch2<M_INT_SIG, Disabled>);
+impl_pin_for_dac!(DAC4: (Dac4IntSig1, Dac4IntSig2), (Dac4Ch1<M_INT_SIG, Disabled>, Dac4Ch2<M_INT_SIG, Disabled>));
 
 pub fn dac<DAC, PINS>(_dac: DAC, _pins: PINS, _rcc: &mut Rcc) -> PINS::Output
 where
