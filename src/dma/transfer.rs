@@ -305,11 +305,12 @@ where
 impl<STREAM, CONFIG, PERIPHERAL, BUF> CircTransfer<STREAM, PERIPHERAL, BUF>
 where
     STREAM: Stream<Config = CONFIG>,
-    BUF: StaticWriteBuffer + Deref,
+    BUF: StaticWriteBuffer + Deref + AsRef<[<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize]>,
+    //<BUF as IntoIterator>::Item: defmt::Format,
     <BUF as Deref>::Target:
         Index<Range<usize>, Output = [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize]>,
     PERIPHERAL: TargetAddress<PeripheralToMemory>,
-    <PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize: Copy,
+    <PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize: Copy + defmt::Format,
 {
     /// Return the number of elements available to read
     pub fn elements_available(&mut self) -> usize {
@@ -329,18 +330,64 @@ where
         }
     }
 
+    /// Reads the buffer from the beginning, NOT from last position.
+    /// 
+    /// Returns a pair of ndtr. This is useful to check at what position the DMA wrote to last.
+    /// If both values match then we know the DMA has not written anything during the copy operation
+    /// in this function call and we know for certain what the newest value is.
+    /// 
+    /// Assuming `before_ndtr == after_ndtr` the last updated value can be found at 
+    /// ```
+    /// let buff = todo!();
+    /// let t = Transfer::init(.., buff, ..);
+    /// ...
+    /// let dat = todo!();
+    /// let (before_ndtr, after_ndtr) = read_exact_from_start_unchecked(&mut dat);
+    /// assert_eq!(before_ndtr, after_ndtr);
+    /// let newest_data_index = if ndtr == buff.len() {
+    ///     buff.len() - 1
+    /// } else {
+    ///     buff.len() - ndtr - 1
+    /// }
+    /// let newest_value = dat[newest_data_index];
+    pub unsafe fn read_exact_from_start_unchecked(
+        &mut self,
+        dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
+    ) -> (u16, u16) {
+        let blen = unsafe { self.transfer.buf.static_write_buffer().1 };
+        let read = dat.len();
+
+        assert!(
+            blen >= read,
+            "Trying to read more than the DMA provided buffer can hold!"
+        );
+
+        fence(Ordering::SeqCst);
+        let before_ndtr = STREAM::get_number_of_transfers();
+        fence(Ordering::SeqCst);
+        dat[0..read].copy_from_slice(&self.transfer.buf[0..read]);
+        fence(Ordering::SeqCst);
+        let after_ndtr = STREAM::get_number_of_transfers();
+        fence(Ordering::SeqCst);
+
+        (before_ndtr, after_ndtr)
+    }
+
     /// Read the same number of elements as the provided buffer can hold.
-    /// Blocks until the number of elements are available.
+    /// Does not check if there are any data available to read
     ///
     /// # Panic
     ///
     /// This function panics if it tries to red more elements than the
     /// buffer of the transfer itself can hold.
+    /// 
+    /// # Safety
+    /// The caller has to ensure there is enough data available to read
     // TODO: fix the above limitation...
-    pub fn read_exact(
+    pub unsafe fn read_exact_unchecked(
         &mut self,
         dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
-    ) -> usize {
+    ) {
         let blen = unsafe { self.transfer.buf.static_write_buffer().1 };
         let pos = self.r_pos;
         let read = dat.len();
@@ -349,8 +396,6 @@ where
             blen > read,
             "Trying to read more than the DMA provided buffer can hold!"
         );
-
-        while self.elements_available() < read {}
 
         fence(Ordering::SeqCst);
 
@@ -373,9 +418,51 @@ where
         }
 
         fence(Ordering::SeqCst);
+    }
+
+    /// Try to read the same number of elements as the provided buffer can hold.
+    /// Returns Error unless number of elements are available.
+    ///
+    /// # Panic
+    ///
+    /// This function panics if it tries to red more elements than the
+    /// buffer of the transfer itself can hold.
+    // TODO: fix the above limitation...
+    pub fn try_read_exact(
+        &mut self,
+        dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
+    ) -> Result<(), usize> {
+        let read = dat.len();
+        let elements_available = self.elements_available();
+        if elements_available < read {
+            return Err(elements_available);
+        }
+
+        // Safety: we have just checked that there is data available
+        unsafe { self.read_exact_unchecked(dat); }
 
         // return the number of bytes read
-        read
+        Ok(())
+    }
+
+    /// Read the same number of elements as the provided buffer can hold.
+    /// Blocks until the number of elements are available.
+    ///
+    /// # Panic
+    ///
+    /// This function panics if it tries to red more elements than the
+    /// buffer of the transfer itself can hold.
+    // TODO: fix the above limitation...
+    pub fn read_exact(
+        &mut self,
+        dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
+    ) -> usize {
+        loop {
+            match self.try_read_exact(dat) {
+                Ok(()) => return dat.len(),
+                Err(_) => (),
+            }
+        }
     }
 
     /// Starts the transfer, the closure will be executed right after enabling
