@@ -1911,8 +1911,7 @@ macro_rules! adc {
                 where
                     CHANNEL: Channel<stm32::$adc_type, ID=u8>
                 {
-
-                    //Check the sequence is long enough
+                   //Check the sequence is long enough
                     self.adc_reg.sqr1.modify(|r, w| {
                         let prev: config::Sequence = r.l().bits().into();
                         if prev < sequence {
@@ -2006,7 +2005,6 @@ macro_rules! adc {
                 /// Resets the end-of-conversion flag
                 #[inline(always)]
                 pub fn clear_end_of_conversion_flag(&mut self) {
-                    //defmt::error!("Clear!");
                     self.adc_reg.isr.modify(|_, w| w.eoc().set_bit());
                 }
 
