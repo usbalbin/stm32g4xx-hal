@@ -96,3 +96,4 @@ pub mod syscfg;
 pub mod time;
 pub mod timer;
 // pub mod watchdog;
+pub mod independent_watchdog;
