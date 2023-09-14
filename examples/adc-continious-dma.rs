@@ -16,7 +16,7 @@ use crate::hal::{
 };
 use stm32g4xx_hal as hal;
 
-use log::info;
+use utils::logger::info;
 
 #[macro_use]
 mod utils;
@@ -76,6 +76,6 @@ fn main() -> ! {
         let millivolts = Vref::sample_to_millivolts((b[0] + b[2]) / 2);
         info!("pa3: {}mV", millivolts);
         let temp = Temperature::temperature_to_degrees_centigrade((b[1] + b[3]) / 2);
-        info!("temp: {}℃C", temp); // Note: Temperature seems quite low...
+        info!("temp: {}℃", temp); // Note: Temperature seems quite low...
     }
 }
