@@ -5,7 +5,7 @@
 
 //#[macro_use]
 //mod utils;
-use stm32g4xx_hal::{independent_watchdog::IndependentWatchdog, prelude::*, stm32::Peripherals};
+use stm32g4xx_hal::{independent_watchdog::IndependentWatchdog, stm32::Peripherals, time::ExtU32};
 
 use cortex_m_rt::entry;
 
@@ -33,7 +33,7 @@ fn main() -> ! {
 
     // Enable the watchdog with a limit of 32.76 seconds (which is the maximum this watchdog can do) and wait forever
     // -> restart the chip
-    watchdog.start(32_760.ms());
+    watchdog.start(32_760.millis());
 
     // Alternatively, there's also a windowed option where if the watchdog is fed before the window time, it will reset the chip as well
     // watchdog.start_windowed(100.millis(), 200.millis());
