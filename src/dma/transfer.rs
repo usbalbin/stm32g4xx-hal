@@ -265,6 +265,11 @@ where
         STREAM::get_transfer_complete_flag()
     }
 
+    #[inline(always)]
+    pub fn get_transfer_error_flag(&self) -> bool {
+        STREAM::get_transfer_error_flag()
+    }
+
     /// Clear half transfer interrupt (htif) for the DMA stream.
     #[inline(always)]
     pub fn clear_half_transfer_interrupt(&mut self) {
@@ -305,7 +310,9 @@ where
 impl<STREAM, CONFIG, PERIPHERAL, BUF> CircTransfer<STREAM, PERIPHERAL, BUF>
 where
     STREAM: Stream<Config = CONFIG>,
-    BUF: StaticWriteBuffer + Deref + AsRef<[<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize]>,
+    BUF: StaticWriteBuffer
+        + Deref
+        + AsRef<[<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize]>,
     //<BUF as IntoIterator>::Item: defmt::Format,
     <BUF as Deref>::Target:
         Index<Range<usize>, Output = [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize]>,
@@ -331,12 +338,12 @@ where
     }
 
     /// Reads the buffer from the beginning, NOT from last position.
-    /// 
+    ///
     /// Returns a pair of ndtr. This is useful to check at what position the DMA wrote to last.
     /// If both values match then we know the DMA has not written anything during the copy operation
     /// in this function call and we know for certain what the newest value is.
-    /// 
-    /// Assuming `before_ndtr == after_ndtr` the last updated value can be found at 
+    ///
+    /// Assuming `before_ndtr == after_ndtr` the last updated value can be found at
     /// ```
     /// let buff = todo!();
     /// let t = Transfer::init(.., buff, ..);
@@ -373,6 +380,40 @@ where
         (before_ndtr, after_ndtr)
     }
 
+    /// Reads the buffer from the beginning, NOT from last position.
+    ///
+    /// Returns ndtr. This is useful to check at what position the DMA wrote to last.
+    /// Using this value we know for certain what the newest value is.
+    ///
+    /// ```
+    /// let buff = todo!();
+    /// let t = Transfer::init(.., buff, ..);
+    /// ...
+    /// let dat = todo!();
+    /// let ndtr = read_exact_from_start_unchecked(&mut dat);
+    /// assert_eq!(buff.len(), dat.len());
+    /// let newest_data_index = if ndtr == buff.len() {
+    ///     buff.len() - 1
+    /// } else {
+    ///     buff.len() - ndtr - 1
+    /// }
+    /// let newest_value = dat[newest_data_index];
+    pub fn read_exact_from_start(
+        &mut self,
+        dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
+    ) -> u16 {
+        loop {
+            // SAFETY: we make sure the DMA has not written anything during our copy operation.
+
+            // The DMA will change the ndtr for every read when increment_memory is enabled. If ndtr is
+            // the same before and after our copy operation, we know the DMA has not written anything
+            let (before_ndtr, after_ndtr) = unsafe { self.read_exact_from_start_unchecked(dat) };
+            if before_ndtr == after_ndtr {
+                return after_ndtr;
+            }
+        }
+    }
+
     /// Read the same number of elements as the provided buffer can hold.
     /// Does not check if there are any data available to read
     ///
@@ -380,7 +421,7 @@ where
     ///
     /// This function panics if it tries to red more elements than the
     /// buffer of the transfer itself can hold.
-    /// 
+    ///
     /// # Safety
     /// The caller has to ensure there is enough data available to read
     // TODO: fix the above limitation...
@@ -439,7 +480,9 @@ where
         }
 
         // Safety: we have just checked that there is data available
-        unsafe { self.read_exact_unchecked(dat); }
+        unsafe {
+            self.read_exact_unchecked(dat);
+        }
 
         // return the number of bytes read
         Ok(())
@@ -509,6 +552,11 @@ where
     #[inline(always)]
     pub fn get_transfer_complete_flag(&self) -> bool {
         self.transfer.get_transfer_complete_flag()
+    }
+
+    #[inline(always)]
+    pub fn get_transfer_error_flag(&self) -> bool {
+        self.transfer.get_transfer_error_flag()
     }
 
     /// Clear half transfer interrupt (htif) for the DMA stream.
