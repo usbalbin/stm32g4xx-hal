@@ -657,13 +657,13 @@ pub mod config {
         Continuous,
 
         /// Discontinuous mode enabled
-        /// 
+        ///
         /// Will perform `subgroup_len` number samples per trigger
         Discontinuous,
     }
 
     /// Number of channels to sample per trigger in discontinuous mode
-    /// 
+    ///
     /// NOTE: This only applies to discontinuous
     #[derive(Debug, Clone, Copy)]
     pub enum SubGroupLength {
@@ -830,7 +830,7 @@ pub mod config {
         }
 
         /// change the subgroup_len field, only relevant in discontinous mode
-        pub fn subgroup_len(mut self, subgroup_len: SubGroupLength)-> Self {
+        pub fn subgroup_len(mut self, subgroup_len: SubGroupLength) -> Self {
             self.subgroup_len = subgroup_len;
             self
         }
