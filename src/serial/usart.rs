@@ -314,6 +314,9 @@ macro_rules! uart_shared {
             }
         }
 
+        impl<TX, RX> hal::blocking::serial::write::Default<u8> for Serial<$USARTX, TX, RX> {}
+        impl<Pin> hal::blocking::serial::write::Default<u8> for Tx<$USARTX, Pin, NoDMA> {}
+
         impl<Pin> hal::serial::Write<u8> for Tx<$USARTX, Pin, NoDMA> {
             type Error = Error;
 
