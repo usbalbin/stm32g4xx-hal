@@ -1,7 +1,8 @@
 pub use fugit::{
     Duration, ExtU32, HertzU32 as Hertz, HoursDurationU32 as Hour,
-    MicrosDurationU32 as MicroSecond, MinutesDurationU32 as Minute, NanosDurationU32 as NanoSecond,
-    RateExtU32, SecsDurationU32 as Second,
+    MicrosDurationU32 as MicroSecond, MillisDurationU32 as MilliSecond,
+    MinutesDurationU32 as Minute, NanosDurationU32 as NanoSecond, RateExtU32,
+    SecsDurationU32 as Second,
 };
 
 /// Baudrate
