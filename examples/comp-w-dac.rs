@@ -36,7 +36,9 @@ fn main() -> ! {
 
     // Set up DAC to output to pa4 and to internal signal Dac1IntSig1
     // which just so happens is compatible with comp1
-    let dac1ch1 = dp.DAC1.constrain((gpioa.pa4, Dac1IntSig1), &mut rcc);
+    let dac1ch1 = dp
+        .DAC1
+        .constrain(/*(gpioa.pa4, */ Dac1IntSig1 /*)*/, &mut rcc);
     let mut dac = dac1ch1.calibrate_buffer(&mut delay).enable();
 
     let (comp1, _comp2, ..) = dp.COMP.split(&mut rcc);
@@ -54,10 +56,12 @@ fn main() -> ! {
     // Configure PA12 to the comparator's alternate function so it gets
     // changed directly by the comparator.
     comp.output_pin(led2);
-    let _comp1 = comp.enable().lock();
+    let comp = comp.enable().lock();
 
     let mut dir = Direction::Upcounting;
     let mut val = 0;
+
+    defmt::info!("Running");
 
     // Manually step the DAC's value to produce a triangle wave
     //
@@ -77,5 +81,6 @@ fn main() -> ! {
             Direction::Upcounting => val += 1,
             Direction::Downcounting => val -= 1,
         }
+        defmt::info!("{}", comp.output())
     }
 }
