@@ -314,6 +314,9 @@ macro_rules! uart_shared {
             }
         }
 
+        impl<TX, RX> hal::blocking::serial::write::Default<u8> for Serial<$USARTX, TX, RX> {}
+        impl<Pin> hal::blocking::serial::write::Default<u8> for Tx<$USARTX, Pin, NoDMA> {}
+
         impl<Pin> hal::serial::Write<u8> for Tx<$USARTX, Pin, NoDMA> {
             type Error = Error;
 
@@ -457,7 +460,7 @@ macro_rules! uart_lp {
                 // try SYSCLK if PCLK is not high enough. We could also select 8x oversampling
                 // instead of 16x.
 
-                let clk = <$USARTX as RccBus>::Bus::get_frequency(&rcc.clocks).0 as u64;
+                let clk = <$USARTX as RccBus>::Bus::get_frequency(&rcc.clocks).raw() as u64;
                 let bdr = config.baudrate.0 as u64;
                 let div = ($clk_mul * clk) / bdr;
                 if div < 16 {
@@ -604,7 +607,7 @@ macro_rules! uart_full {
                 // try SYSCLK if PCLK is not high enough. We could also select 8x oversampling
                 // instead of 16x.
 
-                let clk = <$USARTX as RccBus>::Bus::get_frequency(&rcc.clocks).0 as u64;
+                let clk = <$USARTX as RccBus>::Bus::get_frequency(&rcc.clocks).raw() as u64;
                 let bdr = config.baudrate.0 as u64;
                 let clk_mul = 1;
                 let div = (clk_mul * clk) / bdr;

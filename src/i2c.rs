@@ -1,8 +1,16 @@
 //! I2C
 use hal::blocking::i2c::{Read, Write, WriteRead};
 
-use crate::gpio::{gpioa::*, gpiob::*, gpioc::*, gpiof::*, gpiog::*};
-use crate::gpio::{AlternateOD, AF2, AF3, AF4, AF8};
+use crate::gpio::{gpioa::*, gpiob::*, gpioc::*, gpiof::*};
+#[cfg(any(
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484"
+))]
+use crate::gpio::{gpiog::*, AF3};
+use crate::gpio::{AlternateOD, AF2, AF4, AF8};
 use crate::rcc::{Enable, GetBusFreq, Rcc, RccBus, Reset};
 #[cfg(any(
     feature = "stm32g471",
@@ -75,16 +83,16 @@ impl Config {
             return bits;
         }
         let speed = self.speed.unwrap();
-        let (psc, scll, sclh, sdadel, scldel) = if speed.0 <= 100_000 {
+        let (psc, scll, sclh, sdadel, scldel) = if speed.raw() <= 100_000 {
             let psc = 3;
-            let scll = cmp::min((((i2c_clk.0 >> 1) / (psc + 1)) / speed.0) - 1, 255);
+            let scll = cmp::min((((i2c_clk.raw() >> 1) / (psc + 1)) / speed.raw()) - 1, 255);
             let sclh = scll - 4;
             let sdadel = 2;
             let scldel = 4;
             (psc, scll, sclh, sdadel, scldel)
         } else {
             let psc = 1;
-            let scll = cmp::min((((i2c_clk.0 >> 1) / (psc + 1)) / speed.0) - 1, 255);
+            let scll = cmp::min((((i2c_clk.raw() >> 1) / (psc + 1)) / speed.raw()) - 1, 255);
             let sclh = scll - 6;
             let sdadel = 1;
             let scldel = 3;

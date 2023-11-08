@@ -11,12 +11,13 @@ use crate::hal::{
     delay::SYSTDelayExt,
     dma::{config::DmaConfig, stream::DMAExt, TransferExt},
     gpio::GpioExt,
+    pwr::PwrExt,
     rcc::{Config, RccExt},
     stm32::Peripherals,
 };
 use stm32g4xx_hal as hal;
 
-use log::info;
+use utils::logger::info;
 
 #[macro_use]
 mod utils;
@@ -32,7 +33,8 @@ fn main() -> ! {
 
     info!("rcc");
     let rcc = dp.RCC.constrain();
-    let mut rcc = rcc.freeze(Config::hsi());
+    let pwr = dp.PWR.constrain().freeze();
+    let mut rcc = rcc.freeze(Config::hsi(), pwr);
 
     let streams = dp.DMA1.split(&rcc);
     let config = DmaConfig::default()
@@ -69,6 +71,10 @@ fn main() -> ! {
     loop {
         let mut b = [0_u16; 4];
         let r = transfer.read_exact(&mut b);
+        assert!(
+            !transfer.get_overrun_flag(),
+            "DMA did not have time to read the ADC value before ADC was done with a new conversion"
+        );
 
         info!("read: {}", r);
         assert!(r == b.len());
@@ -76,6 +82,6 @@ fn main() -> ! {
         let millivolts = Vref::sample_to_millivolts((b[0] + b[2]) / 2);
         info!("pa3: {}mV", millivolts);
         let temp = Temperature::temperature_to_degrees_centigrade((b[1] + b[3]) / 2);
-        info!("temp: {}℃C", temp); // Note: Temperature seems quite low...
+        info!("temp: {}℃", temp); // Note: Temperature seems quite low...
     }
 }

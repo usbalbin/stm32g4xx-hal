@@ -9,6 +9,8 @@
     feature = "stm32g474",
     feature = "stm32g483",
     feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g4a1"
 )))]
 
 compile_error!(
@@ -18,7 +20,9 @@ compile_error!(
         stm32g473
         stm32g474
         stm32g483
-        stm32g484"
+        stm32g484
+        stm32g491
+        stm32g4a1"
 );
 
 extern crate bare_metal;
@@ -57,23 +61,34 @@ pub use stm32g4::stm32g483 as stm32;
 #[cfg(feature = "stm32g484")]
 pub use stm32g4::stm32g484 as stm32;
 
+#[cfg(feature = "stm32g491")]
+pub use stm32g4::stm32g491 as stm32;
+
+#[cfg(feature = "stm32g4a1")]
+pub use stm32g4::stm32g4a1 as stm32;
+
 #[cfg(feature = "rt")]
 pub use crate::stm32::interrupt;
 
 pub mod adc;
 pub mod bb;
 pub mod can;
+pub mod comparator;
 // pub mod crc;
-// pub mod dac;
+pub mod dac;
 pub mod delay;
 pub mod dma;
 pub mod exti;
 pub mod flash;
 pub mod gpio;
+
+#[cfg(any(feature = "stm32g474", feature = "stm32g484"))]
+pub mod hrtim;
 pub mod i2c;
 pub mod opamp;
 pub mod prelude;
 pub mod pwm;
+pub mod pwr;
 // pub mod qei;
 pub mod rcc;
 // pub mod rng;
@@ -85,3 +100,4 @@ pub mod syscfg;
 pub mod time;
 pub mod timer;
 // pub mod watchdog;
+pub mod independent_watchdog;

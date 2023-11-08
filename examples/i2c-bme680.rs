@@ -10,6 +10,7 @@ use hal::delay::DelayFromCountDownTimer;
 use hal::i2c::Config;
 use hal::prelude::*;
 use hal::stm32;
+use hal::time::{ExtU32, RateExtU32};
 use hal::timer::Timer;
 use stm32g4xx_hal as hal;
 
@@ -32,11 +33,11 @@ fn main() -> ! {
     let sda = gpiob.pb9.into_alternate_open_drain();
     let scl = gpiob.pb8.into_alternate_open_drain();
 
-    let i2c = dp.I2C1.i2c(sda, scl, Config::new(100.khz()), &mut rcc);
+    let i2c = dp.I2C1.i2c(sda, scl, Config::new(100.kHz()), &mut rcc);
 
     let mut delayer = cp.SYST.delay(&rcc.clocks);
     let timer2 = Timer::new(dp.TIM2, &rcc.clocks);
-    let mut delay = DelayFromCountDownTimer::new(timer2.start_count_down(100.ms()));
+    let mut delay = DelayFromCountDownTimer::new(timer2.start_count_down(100.millis()));
 
     let mut dev =
         Bme680::init(i2c, &mut delayer, I2CAddress::Secondary).expect("Init function failed");
@@ -51,15 +52,15 @@ fn main() -> ! {
         .with_run_gas(true)
         .build();
 
-    let profile_dur = dev.get_profile_dur(&settings.0).unwrap();
+    let _profile_dur = dev.get_profile_dur(&settings.0).unwrap();
     dev.set_sensor_settings(&mut delayer, settings).unwrap();
     dev.set_sensor_mode(&mut delayer, PowerMode::ForcedMode)
         .unwrap();
-    let sensor_settings = dev.get_sensor_settings(settings.1);
+    let _sensor_settings = dev.get_sensor_settings(settings.1);
 
     loop {
         delay.delay_ms(500u32);
-        let power_mode = dev.get_sensor_mode();
+        let _power_mode = dev.get_sensor_mode();
         dev.set_sensor_mode(&mut delayer, PowerMode::ForcedMode)
             .unwrap();
         let (data, _state) = dev.get_sensor_data(&mut delayer).unwrap();

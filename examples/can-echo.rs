@@ -5,9 +5,10 @@ use crate::hal::{
     can::CanExt,
     gpio::{GpioExt as _, Speed},
     nb::block,
+    pwr::PwrExt,
     rcc::{Config, RccExt, SysClockSrc},
     stm32::Peripherals,
-    time::U32Ext,
+    time::RateExtU32,
 };
 use fdcan::{
     config::NominalBitTiming,
@@ -46,8 +47,10 @@ fn main() -> ! {
 
     let dp = Peripherals::take().unwrap();
     let _cp = cortex_m::Peripherals::take().expect("cannot take core peripherals");
+
+    let pwr = dp.PWR.constrain().freeze();
     let rcc = dp.RCC.constrain();
-    let mut rcc = rcc.freeze(Config::new(SysClockSrc::HSE(24.mhz())));
+    let mut rcc = rcc.freeze(Config::new(SysClockSrc::HSE(24.MHz())), pwr);
 
     info!("Split GPIO");
 
@@ -120,7 +123,7 @@ fn main() -> ! {
 
     loop {
         if let Ok(rxheader) = block!(can.receive0(&mut buffer)) {
-            block!(can.transmit(rxheader.unwrap().to_tx_header(None), &mut buffer)).unwrap();
+            block!(can.transmit(rxheader.unwrap().to_tx_header(None), &buffer)).unwrap();
         }
     }
 }

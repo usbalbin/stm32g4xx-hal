@@ -1,0 +1,28 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "probe-rs-debug",
+        "request": "launch",
+        "name": "probe_rs rtt-target example",
+        "coreConfigs": [
+          {
+            "coreIndex": 0,
+            // ... <snip> ...
+            "rttEnabled": true,
+            "rttChannelFormats": [
+              {
+                "channelNumber": 0,
+                "dataFormat": "String", // Format RTT data as String data
+                "showTimestamps": true // Include host-side timestamps for every line of data transferred from the target RTT output
+              },
+              {
+                "channelNumber": 1,
+                "dataFormat": "BinaryLE" // Treat data as raw binary data, and do not format in any way
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }

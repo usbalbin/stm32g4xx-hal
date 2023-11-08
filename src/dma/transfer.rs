@@ -265,6 +265,11 @@ where
         STREAM::get_transfer_complete_flag()
     }
 
+    #[inline(always)]
+    pub fn get_transfer_error_flag(&self) -> bool {
+        STREAM::get_transfer_error_flag()
+    }
+
     /// Clear half transfer interrupt (htif) for the DMA stream.
     #[inline(always)]
     pub fn clear_half_transfer_interrupt(&mut self) {
@@ -305,15 +310,18 @@ where
 impl<STREAM, CONFIG, PERIPHERAL, BUF> CircTransfer<STREAM, PERIPHERAL, BUF>
 where
     STREAM: Stream<Config = CONFIG>,
-    BUF: StaticWriteBuffer + Deref,
+    BUF: StaticWriteBuffer
+        + Deref
+        + AsRef<[<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize]>,
+    //<BUF as IntoIterator>::Item: defmt::Format,
     <BUF as Deref>::Target:
         Index<Range<usize>, Output = [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize]>,
     PERIPHERAL: TargetAddress<PeripheralToMemory>,
-    <PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize: Copy,
+    <PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize: Copy + defmt::Format,
 {
     /// Return the number of elements available to read
     pub fn elements_available(&mut self) -> usize {
-        let blen = unsafe { self.transfer.buf.static_write_buffer().1 } as usize;
+        let blen = unsafe { self.transfer.buf.static_write_buffer().1 };
         let ndtr = STREAM::get_number_of_transfers() as usize;
         let pos_at = self.r_pos;
 
@@ -329,19 +337,99 @@ where
         }
     }
 
+    /// Reads the buffer from the beginning, NOT from last position.
+    ///
+    /// Returns a pair of ndtr. This is useful to check at what position the DMA wrote to last.
+    /// If both values match then we know the DMA has not written anything during the copy operation
+    /// in this function call and we know for certain what the newest value is.
+    ///
+    /// Assuming `before_ndtr == after_ndtr` the last updated value can be found at
+    /// ```
+    /// let buff = todo!();
+    /// let t = Transfer::init(.., buff, ..);
+    /// ...
+    /// let dat = todo!();
+    /// let (before_ndtr, after_ndtr) = read_exact_from_start_unchecked(&mut dat);
+    /// assert_eq!(before_ndtr, after_ndtr);
+    /// let newest_data_index = if ndtr == buff.len() {
+    ///     buff.len() - 1
+    /// } else {
+    ///     buff.len() - ndtr - 1
+    /// }
+    /// let newest_value = dat[newest_data_index];
+    pub unsafe fn read_exact_from_start_unchecked(
+        &mut self,
+        dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
+    ) -> (u16, u16) {
+        let blen = unsafe { self.transfer.buf.static_write_buffer().1 };
+        let read = dat.len();
+
+        assert!(
+            blen >= read,
+            "Trying to read more than the DMA provided buffer can hold!"
+        );
+
+        fence(Ordering::SeqCst);
+        let before_ndtr = STREAM::get_number_of_transfers();
+        fence(Ordering::SeqCst);
+        dat[0..read].copy_from_slice(&self.transfer.buf[0..read]);
+        fence(Ordering::SeqCst);
+        let after_ndtr = STREAM::get_number_of_transfers();
+        fence(Ordering::SeqCst);
+
+        (before_ndtr, after_ndtr)
+    }
+
+    /// Reads the buffer from the beginning, NOT from last position.
+    ///
+    /// Returns ndtr. This is useful to check at what position the DMA wrote to last.
+    /// Using this value we know for certain what the newest value is.
+    ///
+    /// ```
+    /// let buff = todo!();
+    /// let t = Transfer::init(.., buff, ..);
+    /// ...
+    /// let dat = todo!();
+    /// let ndtr = read_exact_from_start_unchecked(&mut dat);
+    /// assert_eq!(buff.len(), dat.len());
+    /// let newest_data_index = if ndtr == buff.len() {
+    ///     buff.len() - 1
+    /// } else {
+    ///     buff.len() - ndtr - 1
+    /// }
+    /// let newest_value = dat[newest_data_index];
+    pub fn read_exact_from_start(
+        &mut self,
+        dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
+    ) -> u16 {
+        loop {
+            // SAFETY: we make sure the DMA has not written anything during our copy operation.
+
+            // The DMA will change the ndtr for every read when increment_memory is enabled. If ndtr is
+            // the same before and after our copy operation, we know the DMA has not written anything
+            let (before_ndtr, after_ndtr) = unsafe { self.read_exact_from_start_unchecked(dat) };
+            if before_ndtr == after_ndtr {
+                return after_ndtr;
+            }
+        }
+    }
+
     /// Read the same number of elements as the provided buffer can hold.
-    /// Blocks until the number of elements are available.
+    /// Does not check if there are any data available to read
     ///
     /// # Panic
     ///
     /// This function panics if it tries to red more elements than the
     /// buffer of the transfer itself can hold.
+    ///
+    /// # Safety
+    /// The caller has to ensure there is enough data available to read
     // TODO: fix the above limitation...
-    pub fn read_exact(
+    pub unsafe fn read_exact_unchecked(
         &mut self,
         dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
-    ) -> usize {
-        let blen = unsafe { self.transfer.buf.static_write_buffer().1 } as usize;
+    ) {
+        let blen = unsafe { self.transfer.buf.static_write_buffer().1 };
         let pos = self.r_pos;
         let read = dat.len();
 
@@ -349,8 +437,6 @@ where
             blen > read,
             "Trying to read more than the DMA provided buffer can hold!"
         );
-
-        while self.elements_available() < read {}
 
         fence(Ordering::SeqCst);
 
@@ -373,9 +459,53 @@ where
         }
 
         fence(Ordering::SeqCst);
+    }
+
+    /// Try to read the same number of elements as the provided buffer can hold.
+    /// Returns Error unless number of elements are available.
+    ///
+    /// # Panic
+    ///
+    /// This function panics if it tries to red more elements than the
+    /// buffer of the transfer itself can hold.
+    // TODO: fix the above limitation...
+    pub fn try_read_exact(
+        &mut self,
+        dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
+    ) -> Result<(), usize> {
+        let read = dat.len();
+        let elements_available = self.elements_available();
+        if elements_available < read {
+            return Err(elements_available);
+        }
+
+        // Safety: we have just checked that there is data available
+        unsafe {
+            self.read_exact_unchecked(dat);
+        }
 
         // return the number of bytes read
-        read
+        Ok(())
+    }
+
+    /// Read the same number of elements as the provided buffer can hold.
+    /// Blocks until the number of elements are available.
+    ///
+    /// # Panic
+    ///
+    /// This function panics if it tries to red more elements than the
+    /// buffer of the transfer itself can hold.
+    // TODO: fix the above limitation...
+    pub fn read_exact(
+        &mut self,
+        dat: &mut [<PERIPHERAL as TargetAddress<PeripheralToMemory>>::MemSize],
+    ) -> usize {
+        loop {
+            match self.try_read_exact(dat) {
+                Ok(()) => return dat.len(),
+                Err(_) => (),
+            }
+        }
     }
 
     /// Starts the transfer, the closure will be executed right after enabling
@@ -424,6 +554,11 @@ where
         self.transfer.get_transfer_complete_flag()
     }
 
+    #[inline(always)]
+    pub fn get_transfer_error_flag(&self) -> bool {
+        self.transfer.get_transfer_error_flag()
+    }
+
     /// Clear half transfer interrupt (htif) for the DMA stream.
     #[inline(always)]
     pub fn clear_half_transfer_interrupt(&mut self) {
@@ -435,6 +570,57 @@ where
         self.transfer.get_half_transfer_flag()
     }
 }
+
+macro_rules! impl_adc_overrun {
+    ($($adc:ident, )*) => {$(
+        impl<STREAM, CONFIG, BUF> CircTransfer<STREAM, crate::adc::Adc<crate::stm32::$adc, crate::adc::DMA>, BUF>
+        where
+            STREAM: Stream<Config = CONFIG>,
+            BUF: StaticWriteBuffer + Deref,
+            <BUF as Deref>::Target: Index<Range<usize>, Output = [u16]> {
+            /// This is set when the AD finishes a conversion before the DMA has hade time to transfer the previous value
+            pub fn get_overrun_flag(&self) -> bool {
+                self.transfer.peripheral.get_overrun_flag()
+            }
+
+            pub fn clear_overrun_flag(&mut self) {
+                self.transfer.peripheral.clear_overrun_flag();
+            }
+        }
+    )*};
+}
+
+#[cfg(any(
+    feature = "stm32g431",
+    feature = "stm32g441",
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g4a1",
+))]
+impl_adc_overrun!(ADC1, ADC2,);
+
+#[cfg(any(
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g4a1",
+))]
+impl_adc_overrun!(ADC3,);
+
+#[cfg(any(
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+))]
+impl_adc_overrun!(ADC4, ADC5,);
 
 pub trait TransferExt<STREAM>
 where
@@ -589,6 +775,18 @@ macro_rules! transfer_constructor {
     };
 }
 
+// Cat 2, 3 and 4 devices
+#[cfg(any(
+    feature = "stm32g431",
+    feature = "stm32g441",
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g49a",
+))]
 transfer_constructor!(
     (DMA1, Stream0),
     (DMA1, Stream1),
@@ -596,14 +794,27 @@ transfer_constructor!(
     (DMA1, Stream3),
     (DMA1, Stream4),
     (DMA1, Stream5),
-    (DMA1, Stream6),
-    (DMA1, Stream7),
     (DMA2, Stream0),
     (DMA2, Stream1),
     (DMA2, Stream2),
     (DMA2, Stream3),
     (DMA2, Stream4),
     (DMA2, Stream5),
+);
+
+// Cat 3 and 4 devices
+#[cfg(any(
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g49a",
+))]
+transfer_constructor!(
+    (DMA1, Stream6),
+    (DMA1, Stream7),
     (DMA2, Stream6),
     (DMA2, Stream7),
 );

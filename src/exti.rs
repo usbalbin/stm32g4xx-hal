@@ -84,7 +84,7 @@ pub trait ExtiExt {
 impl ExtiExt for EXTI {
     fn listen(&self, ev: Event, edge: SignalEdge) {
         let line = ev as u8;
-        assert!(line <= 17);
+        //assert!(line <= 17);
         let mask = 1 << line;
         match edge {
             SignalEdge::Rising => {
@@ -132,17 +132,17 @@ impl ExtiExt for EXTI {
 
     fn is_pending(&self, ev: Event) -> bool {
         let line = ev as u8;
-        if line > 18 {
-            return false;
-        }
+        //if line > 18 {
+        //    return false;
+        //}
         let mask = 1 << line;
         self.pr1.read().bits() & mask != 0
     }
 
     fn unpend(&self, ev: Event) {
         let line = ev as u8;
-        if line <= 18 {
-            self.pr1.modify(|_, w| unsafe { w.bits(1 << line) });
-        }
+        //if line <= 18 {
+        self.pr1.modify(|_, w| unsafe { w.bits(1 << line) });
+        //}
     }
 }

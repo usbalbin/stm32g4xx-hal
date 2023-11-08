@@ -4,21 +4,17 @@ use super::Bits;
 /// the same software priority level, the stream with the lower number takes
 /// priority over the stream with the higher number. For example, Stream 2
 /// takes priority over Stream 4.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub enum Priority {
     /// Low priority.
     Low,
     /// Medium priority.
+    #[default]
     Medium,
     /// High priority.
     High,
     /// Very high priority.
     VeryHigh,
-}
-impl Default for Priority {
-    fn default() -> Self {
-        Priority::Medium
-    }
 }
 
 impl Bits<u8> for Priority {
@@ -42,7 +38,6 @@ pub struct DmaConfig {
     pub(crate) transfer_complete_interrupt: bool,
     pub(crate) half_transfer_interrupt: bool,
     pub(crate) transfer_error_interrupt: bool,
-    pub(crate) double_buffer: bool,
 }
 
 impl DmaConfig {
@@ -86,12 +81,6 @@ impl DmaConfig {
     #[inline(always)]
     pub fn transfer_error_interrupt(mut self, transfer_error_interrupt: bool) -> Self {
         self.transfer_error_interrupt = transfer_error_interrupt;
-        self
-    }
-    /// Set the double_buffer.
-    #[inline(always)]
-    pub fn double_buffer(mut self, double_buffer: bool) -> Self {
-        self.double_buffer = double_buffer;
         self
     }
 }
