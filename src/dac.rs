@@ -182,6 +182,8 @@ macro_rules! dac_helper {
     ),)+) => {
         $(
             impl<const MODE_BITS: u8> $CX<MODE_BITS, Disabled> {
+                /// TODO: The DAC does not seem to work unless `calibrate_buffer` has been callen
+                /// even when only using dac output internally
                 pub fn enable(self) -> $CX<MODE_BITS, Enabled> {
                     let dac = unsafe { &(*<$DAC>::ptr()) };
 
