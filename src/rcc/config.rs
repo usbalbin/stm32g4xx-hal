@@ -342,9 +342,6 @@ pub struct Config {
     pub(crate) ahb_psc: Prescaler,
     pub(crate) apb1_psc: Prescaler,
     pub(crate) apb2_psc: Prescaler,
-
-    /// Required for f_sys > 150MHz
-    pub(crate) enable_boost: bool,
 }
 
 impl Config {
@@ -384,11 +381,6 @@ impl Config {
         self.apb2_psc = psc;
         self
     }
-
-    pub fn boost(mut self, enable_boost: bool) -> Self {
-        self.enable_boost = enable_boost;
-        self
-    }
 }
 
 impl Default for Config {
@@ -399,7 +391,6 @@ impl Default for Config {
             ahb_psc: Prescaler::NotDivided,
             apb1_psc: Prescaler::NotDivided,
             apb2_psc: Prescaler::NotDivided,
-            enable_boost: false,
         }
     }
 }
