@@ -515,8 +515,10 @@ macro_rules! dma_stream {
     };
 }
 
-// Cat 3 and 4 devices
+// Cat 2, 3 and 4 devices
 #[cfg(any(
+    feature = "stm32g431",
+    feature = "stm32g441",
     feature = "stm32g471",
     feature = "stm32g473",
     feature = "stm32g474",
@@ -564,6 +566,18 @@ dma_stream!(
         fields => tcif6, htif6, teif6, gif6, tcif6, htif6, teif6, gif6,
         dmamux => c5cr, c13cr,
     ),
+);
+
+#[cfg(any(
+    feature = "stm32g471",
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+    feature = "stm32g491",
+    feature = "stm32g49a",
+))]
+dma_stream!(
     (
         Stream6, 6,
         regs => ch7,
