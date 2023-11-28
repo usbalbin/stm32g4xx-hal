@@ -496,8 +496,8 @@ macro_rules! gpio {
                         unsafe {
                             (*$GPIOX::ptr()).ospeedr.modify(|r, w| {
                                 w.bits((r.bits() & !(0b11 << offset)) | ((speed as u32) << offset))
-                            });
-                        };
+                            })
+                        }
                         self
                     }
 
