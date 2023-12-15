@@ -32,13 +32,13 @@ fn main() -> ! {
     println!("Bank 1 first 4 bytes: {:?}", bytes);
 
     if is_dual_bank {
-        let address = 0x0001_F000;
+        let address = 0x0004_0000;
         let bytes = flash_writer.read(address, 4).unwrap();
         println!("Bank 2 first 4 bytes before write: {:?}", bytes);
         
         flash_writer.page_erase(address).unwrap();
-        //let bytes = flash_writer.read(address, 4).unwrap();
-        //println!("Bank 2 first 4 bytes after erase: {:?}", bytes);
+        let bytes = flash_writer.read(address, 4).unwrap();
+        println!("Bank 2 first 4 bytes after erase: {:?}", bytes);
 
         let bytes = flash_writer.write(address, &[1, 2, 3, 4], true).unwrap();
         let bytes = flash_writer.read(address, 4).unwrap();
