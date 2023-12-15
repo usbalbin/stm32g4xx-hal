@@ -111,6 +111,10 @@ name = "hrtim-eev-comp"
 path = "examples/hrtim/eev-comp.rs"
 
 [[example]]
+name = "hrtim-eev-up-down"
+path = "examples/hrtim/eev-up-down.rs"
+
+[[example]]
 name = "hrtim-eev"
 path = "examples/hrtim/eev.rs"
 

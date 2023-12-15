@@ -35,6 +35,10 @@ pub trait HrTimer<TIM, PSCL> {
 
     /// Stop timer and reset counter
     fn stop_and_reset(&mut self, _hr_control: &mut HrPwmControl);
+
+    fn enable_repetition_interrupt(&mut self, enable: bool);
+
+    fn clear_repetition_interrupt(&mut self);
 }
 
 macro_rules! hrtim_timer {
@@ -76,6 +80,18 @@ macro_rules! hrtim_timer {
                 let tim = unsafe { &*$TIMX::ptr() };
                 unsafe { tim.$cntXr.write(|w| w.$cntx().bits(0)); }
             }
+
+            fn enable_repetition_interrupt(&mut self, enable: bool) {
+                let tim = unsafe { &*$TIMX::ptr() };
+
+                tim.$dier.modify(|_r, w| w.$repie().bit(enable));
+            }
+
+            fn clear_repetition_interrupt(&mut self) {
+                let tim = unsafe { &*$TIMX::ptr() };
+
+                tim.$icr.write(|w| w.$repc().set_bit());
+            }
         }
 
         impl<PSCL> HrTim<$TIMX, PSCL> {
@@ -112,18 +128,6 @@ macro_rules! hrtim_timer {
                 let tim = unsafe { &*$TIMX::ptr() };
 
                 unsafe { tim.$rep.write(|w| w.$repx().bits(repetition_counter)); }
-            }
-
-            pub fn enable_repetition_interrupt(&mut self, enable: bool) {
-                let tim = unsafe { &*$TIMX::ptr() };
-
-                tim.$dier.modify(|_r, w| w.$repie().bit(enable));
-            }
-
-            pub fn clear_repetition_interrupt(&mut self) {
-                let tim = unsafe { &*$TIMX::ptr() };
-
-                tim.$icr.write(|w| w.$repc().set_bit());
             }
         }
     )+};
