@@ -7,16 +7,19 @@
 
 mod utils;
 
+//use logger_rtt as _;
+
 #[rtic::app(device = stm32g4xx_hal::stm32g4::stm32g474, peripherals = true)]
 mod app {
     use crate::utils::logger;
     use stm32g4xx_hal::flash::{FlashExt, FlashSize, FlashWriter, Parts};
     use stm32g4xx_hal::prelude::*;
     use stm32g4xx_hal::rcc::{PllConfig, RccExt};
+    use stm32g4xx_hal::pwr::PwrExt;
 
-    const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Info;
+    //const LOG_LEVEL: log::LevelFilter = log::LevelFilter::Info;
 
-    use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
+    //use panic_halt as _; // you can put a breakpoint on `rust_begin_unwind` to catch panics
 
     // Resources shared between tasks
     #[shared]
@@ -67,10 +70,13 @@ mod app {
         // The ADC will ultimately be put into synchronous mode and will derive
         // its clock from the AHB bus clock, with a prescalar of 2 or 4.
 
-        let mut rcc = rcc.freeze(clock_config);
+        let pwr = dp.PWR.constrain().freeze();
+        let mut rcc = rcc.freeze(clock_config, pwr);
 
         unsafe {
             let mut flash = &(*stm32g4xx_hal::stm32::FLASH::ptr());
+            //assert_eq!(flash.acr.read().latency().bits(), 0b1000); // 8 wait states
+            
             flash.acr.modify(|_, w| {
                 w.latency().bits(0b1000) // 8 wait states
             });
@@ -120,8 +126,7 @@ mod app {
                         FLASH_EXAMPLE_START_ADDRESS + i * FLASH_SPACING,
                         &one_byte,
                         true,
-                    );
-                    assert!(result.is_ok());
+                    ).unwrap();
                     logger::info!(
                         "Wrote 1 byte to address {}",
                         FLASH_EXAMPLE_START_ADDRESS + i * FLASH_SPACING
@@ -134,7 +139,6 @@ mod app {
                         &two_bytes,
                         false,
                     );
-                    assert!(result.is_err());
                     assert_eq!(
                         result.err().unwrap(),
                         stm32g4xx_hal::flash::Error::ArrayMustBeDivisibleBy8
@@ -146,7 +150,7 @@ mod app {
                         &two_bytes,
                         true,
                     );
-                    assert!(result.is_ok());
+                    result.unwrap();
                     logger::info!(
                         "Wrote 2 bytes to address {}",
                         FLASH_EXAMPLE_START_ADDRESS + i * FLASH_SPACING
@@ -159,7 +163,6 @@ mod app {
                         &three_bytes,
                         false,
                     );
-                    assert!(result.is_err());
                     assert_eq!(
                         result.err().unwrap(),
                         stm32g4xx_hal::flash::Error::ArrayMustBeDivisibleBy8
@@ -171,7 +174,7 @@ mod app {
                         &three_bytes,
                         true,
                     );
-                    assert!(result.is_ok());
+                    result.unwrap();
                     logger::info!(
                         "Wrote 3 bytes to address {}",
                         FLASH_EXAMPLE_START_ADDRESS + i * FLASH_SPACING
@@ -184,7 +187,6 @@ mod app {
                         &four_bytes,
                         false,
                     );
-                    assert!(result.is_err());
                     assert_eq!(
                         result.err().unwrap(),
                         stm32g4xx_hal::flash::Error::ArrayMustBeDivisibleBy8
@@ -196,7 +198,7 @@ mod app {
                         &four_bytes,
                         true,
                     );
-                    assert!(result.is_ok());
+                    result.unwrap();
                     logger::info!(
                         "Wrote 4 bytes to address {}",
                         FLASH_EXAMPLE_START_ADDRESS + i * FLASH_SPACING
