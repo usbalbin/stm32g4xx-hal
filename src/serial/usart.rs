@@ -123,9 +123,11 @@ pub trait SerialExt<USART, Config> {
         RX: RxPin<USART>;
 }
 
+
+
 impl<USART, TX, RX> fmt::Write for Serial<USART, TX, RX>
 where
-    Serial<USART, TX, RX>: hal::serial::Write<u8>,
+    Serial<USART, TX, RX>: hal_nb::serial::Write<u8>,
 {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let _ = s.as_bytes().iter().map(|c| block!(self.write(*c))).last();
@@ -133,9 +135,13 @@ where
     }
 }
 
+impl<T, TX, RX> hal_nb::serial::ErrorType for Serial<T, TX, RX> {
+    type Error = Error;
+}
+
 impl<USART, Pin, Dma> fmt::Write for Tx<USART, Pin, Dma>
 where
-    Tx<USART, Pin, Dma>: hal::serial::Write<u8>,
+    Tx<USART, Pin, Dma>: hal_nb::serial::Write<u8>,
 {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let _ = s.as_bytes().iter().map(|c| block!(self.write(*c))).last();
@@ -220,10 +226,8 @@ macro_rules! uart_shared {
             }
         }
 
-        impl<Pin> hal::serial::Read<u8> for Rx<$USARTX, Pin, NoDMA> {
-            type Error = Error;
-
-            fn read(&mut self) -> nb::Result<u8, Error> {
+        impl<Pin> hal_nb::serial::Read<u8> for Rx<$USARTX, Pin, NoDMA> {
+            fn read(&mut self) -> nb::Result<u8, Self::Error> {
                 let usart = unsafe { &(*$USARTX::ptr()) };
                 let isr = usart.isr.read();
                 Err(
@@ -248,10 +252,8 @@ macro_rules! uart_shared {
             }
         }
 
-        impl<TX, RX> hal::serial::Read<u8> for Serial<$USARTX, TX, RX> {
-            type Error = Error;
-
-            fn read(&mut self) -> nb::Result<u8, Error> {
+        impl<TX, RX> hal_nb::serial::Read<u8> for Serial<$USARTX, TX, RX> {
+            fn read(&mut self) -> nb::Result<u8, Self::Error> {
                 self.rx.read()
             }
         }
@@ -314,9 +316,7 @@ macro_rules! uart_shared {
             }
         }
 
-        impl<Pin> hal::serial::Write<u8> for Tx<$USARTX, Pin, NoDMA> {
-            type Error = Error;
-
+        impl<Pin> hal_nb::serial::Write<u8> for Tx<$USARTX, Pin, NoDMA> {
             fn flush(&mut self) -> nb::Result<(), Self::Error> {
                 let usart = unsafe { &(*$USARTX::ptr()) };
                 if usart.isr.read().tc().bit_is_set() {
@@ -337,9 +337,7 @@ macro_rules! uart_shared {
             }
         }
 
-        impl<TX, RX> hal::serial::Write<u8> for Serial<$USARTX, TX, RX> {
-            type Error = Error;
-
+        impl<TX, RX> hal_nb::serial::Write<u8> for Serial<$USARTX, TX, RX> {
             fn flush(&mut self) -> nb::Result<(), Self::Error> {
                 self.tx.flush()
             }

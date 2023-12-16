@@ -12,7 +12,7 @@ use crate::gpio::gpioa::{PA4, PA5, PA6};
 use crate::gpio::DefaultMode;
 use crate::rcc::{self, *};
 use crate::stm32::{DAC1, DAC2, DAC3, DAC4, RCC};
-use hal::blocking::delay::DelayUs;
+use hal::delay::DelayNs;
 
 pub trait DacOut<V> {
     fn set_value(&mut self, val: V);
@@ -232,7 +232,7 @@ macro_rules! dac_helper {
                 /// disabled.
                 pub fn calibrate_buffer<T>(self, delay: &mut T) -> $CX<MODE_BITS, Disabled>
                 where
-                    T: DelayUs<u32>,
+                    T: DelayNs<u32>,
                 {
                     let dac = unsafe { &(*<$DAC>::ptr()) };
                     dac.dac_cr.modify(|_, w| w.$en().clear_bit());

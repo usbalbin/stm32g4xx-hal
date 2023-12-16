@@ -37,8 +37,13 @@ features = ["const-fn"]
 version = "0.2.5"
 
 [dependencies.embedded-hal]
-features = ["unproven"]
-version = "0.2.4"
+version = "1.0.0-rc.3"
+
+[dependencies.embedded-hal-nb]
+version = "1.0.0-rc.3"
+
+[dependencies.embedded-io]
+version = "0.6.1"
 
 [dependencies.embedded-dma]
 version = "0.1.2"
