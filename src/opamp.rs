@@ -142,32 +142,32 @@ macro_rules! opamps {
             }
 
             $(
-                impl From<&PgaModeInternal> for crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN_A {
-                    fn from(x: &PgaModeInternal) -> crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN_A {
-                        use crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN_A;
+                impl From<&PgaModeInternal> for crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN {
+                    fn from(x: &PgaModeInternal) -> crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN {
+                        use crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN;
 
                         match x.0 {
-                            NonInvertingGain::Gain2 => PGA_GAIN_A::Gain2,
-                            NonInvertingGain::Gain4 => PGA_GAIN_A::Gain4,
-                            NonInvertingGain::Gain8 => PGA_GAIN_A::Gain8,
-                            NonInvertingGain::Gain16 => PGA_GAIN_A::Gain16,
-                            NonInvertingGain::Gain32 => PGA_GAIN_A::Gain32,
-                            NonInvertingGain::Gain64 => PGA_GAIN_A::Gain64,
+                            NonInvertingGain::Gain2 => PGA_GAIN::Gain2,
+                            NonInvertingGain::Gain4 => PGA_GAIN::Gain4,
+                            NonInvertingGain::Gain8 => PGA_GAIN::Gain8,
+                            NonInvertingGain::Gain16 => PGA_GAIN::Gain16,
+                            NonInvertingGain::Gain32 => PGA_GAIN::Gain32,
+                            NonInvertingGain::Gain64 => PGA_GAIN::Gain64,
                         }
                     }
                 }
 
-                impl<PIN> From<&PgaModeInvertedInputFiltered<PIN>> for crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN_A {
-                    fn from(x: &PgaModeInvertedInputFiltered<PIN>) -> crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN_A {
-                        use crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN_A;
+                impl<PIN> From<&PgaModeInvertedInputFiltered<PIN>> for crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN {
+                    fn from(x: &PgaModeInvertedInputFiltered<PIN>) -> crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN {
+                        use crate::stm32::opamp::[<$opamp _csr>]::PGA_GAIN;
 
                         match x.gain {
-                            NonInvertingGain::Gain2 => PGA_GAIN_A::Gain2FilteringVinm0,
-                            NonInvertingGain::Gain4 => PGA_GAIN_A::Gain4FilteringVinm0,
-                            NonInvertingGain::Gain8 => PGA_GAIN_A::Gain8FilteringVinm0,
-                            NonInvertingGain::Gain16 => PGA_GAIN_A::Gain16FilteringVinm0,
-                            NonInvertingGain::Gain32 => PGA_GAIN_A::Gain32FilteringVinm0,
-                            NonInvertingGain::Gain64 => PGA_GAIN_A::Gain64FilteringVinm0,
+                            NonInvertingGain::Gain2 => PGA_GAIN::Gain2FilteringVinm0,
+                            NonInvertingGain::Gain4 => PGA_GAIN::Gain4FilteringVinm0,
+                            NonInvertingGain::Gain8 => PGA_GAIN::Gain8FilteringVinm0,
+                            NonInvertingGain::Gain16 => PGA_GAIN::Gain16FilteringVinm0,
+                            NonInvertingGain::Gain32 => PGA_GAIN::Gain32FilteringVinm0,
+                            NonInvertingGain::Gain64 => PGA_GAIN::Gain64FilteringVinm0,
                         }
                     }
                 }
@@ -240,7 +240,7 @@ macro_rules! opamps {
 
                         /// Disables the opamp and returns the resources it held.
                         pub fn disable(self) -> (Disabled, Input, Option<$output>) {
-                            unsafe { (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>].reset() }
+                            unsafe { (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>]().reset() }
                             (Disabled, self.input, self.output)
                         }
 
@@ -248,7 +248,7 @@ macro_rules! opamps {
                         pub fn enable_output(&mut self, output:$output) {
                             self.output = Some(output);
                             unsafe {
-                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>].write(|w|
+                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>]().write(|w|
                                     w.opaintoen().output_pin());
                             }
                         }
@@ -258,7 +258,7 @@ macro_rules! opamps {
                         /// If the output was enabled, the output pin is returned.
                         pub fn disable_output(&mut self) -> Option<$output> {
                             unsafe {
-                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>].write(|w|
+                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>]().write(|w|
                                     w.opaintoen().adcchannel());
                             }
                             self.output.take()
@@ -269,7 +269,7 @@ macro_rules! opamps {
 
                         /// Disables the opamp and returns the resources it held.
                         pub fn disable(self) -> (Disabled, NonInverting, Inverting, Option<$output>) {
-                            unsafe { (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>].reset() }
+                            unsafe { (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>]().reset() }
                             (Disabled, self.non_inverting, self.inverting, self.output)
                         }
 
@@ -277,7 +277,7 @@ macro_rules! opamps {
                         pub fn enable_output(&mut self, output:$output) {
                             self.output = Some(output);
                             unsafe {
-                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>].write(|w|
+                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>]().write(|w|
                                     w.opaintoen().output_pin());
                             }
                         }
@@ -287,7 +287,7 @@ macro_rules! opamps {
                         /// If the output was enabled, the output pin is returned.
                         pub fn disable_output(&mut self) -> Option<$output> {
                             unsafe {
-                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>].write(|w|
+                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>]().write(|w|
                                     w.opaintoen().adcchannel());
                             }
                             self.output.take()
@@ -298,7 +298,7 @@ macro_rules! opamps {
 
                         /// Disables the opamp and returns the resources it held.
                         pub fn disable(self) -> (Disabled, MODE, Option<$output>) {
-                            unsafe { (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>].reset() }
+                            unsafe { (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>]().reset() }
                             (Disabled, self.config, self.output)
                         }
 
@@ -306,7 +306,7 @@ macro_rules! opamps {
                         pub fn enable_output(&mut self, output: $output) {
                             self.output = Some(output);
                             unsafe {
-                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>].write(|w|
+                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>]().write(|w|
                                     w.opaintoen().output_pin());
                             }
                         }
@@ -316,7 +316,7 @@ macro_rules! opamps {
                         /// If the output was enabled, the output pin is returned.
                         pub fn disable_output(&mut self) -> Option<$output> {
                             unsafe {
-                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>].write(|w|
+                                (*crate::stm32::OPAMP::ptr()).[<$opamp _csr>]().write(|w|
                                     w.opaintoen().adcchannel());
                             }
                             self.output.take()
@@ -347,7 +347,7 @@ macro_rules! opamps {
                 ) -> (
                     $($opamp::Disabled,)*
                 ) {
-                    rcc.rb.apb2enr.modify(|_, w| w.syscfgen().set_bit());
+                    rcc.rb.apb2enr().modify(|_, w| w.syscfgen().set_bit());
 
                     (
                         $($opamp::Disabled,)*
@@ -383,9 +383,9 @@ macro_rules! opamps {
                     let input = input.into();
                     let output = output.map(|output| output.into());
                     unsafe {
-                        use crate::stm32::opamp::[<$opamp _csr>]::OPAINTOEN_A;
+                        use crate::stm32::opamp::[<$opamp _csr>]::OPAINTOEN;
                         (*crate::stm32::OPAMP::ptr())
-                            .[<$opamp _csr>]
+                            .[<$opamp _csr>]()
                             .write(|csr_w|
                                 csr_w
                                     .vp_sel()
@@ -394,8 +394,8 @@ macro_rules! opamps {
                                     .output()
                                     .opaintoen()
                                     .variant(match output {
-                                        Some(_) => OPAINTOEN_A::OutputPin,
-                                        None => OPAINTOEN_A::Adcchannel,
+                                        Some(_) => OPAINTOEN::OutputPin,
+                                        None => OPAINTOEN::Adcchannel,
                                     })
                                     .opaen()
                                     .enabled()
@@ -452,9 +452,9 @@ macro_rules! opamps {
                     let inverting = inverting.into();
                     let output = output.map(|output| output.into());
                     unsafe {
-                        use crate::stm32::opamp::[<$opamp _csr>]::OPAINTOEN_A;
+                        use crate::stm32::opamp::[<$opamp _csr>]::OPAINTOEN;
                         (*crate::stm32::OPAMP::ptr())
-                            .[<$opamp _csr>]
+                            .[<$opamp _csr>]()
                             .write(|csr_w|
                                 csr_w.vp_sel()
                                     .$non_inverting_mask()
@@ -462,8 +462,8 @@ macro_rules! opamps {
                                     .$inverting_mask()
                                     .opaintoen()
                                     .variant(match output {
-                                        Some(_) => OPAINTOEN_A::OutputPin,
-                                        None => OPAINTOEN_A::Adcchannel,
+                                        Some(_) => OPAINTOEN::OutputPin,
+                                        None => OPAINTOEN::Adcchannel,
                                     })
                                     .opaen()
                                     .enabled()
@@ -518,10 +518,10 @@ macro_rules! opamps {
                 ) -> Pga<$non_inverting, $mode> {
                     let output = output.map(|output| output.into());
                     unsafe {
-                        use crate::stm32::opamp::[<$opamp _csr>]::OPAINTOEN_A;
+                        use crate::stm32::opamp::[<$opamp _csr>]::OPAINTOEN;
 
                         (*crate::stm32::OPAMP::ptr())
-                            .[<$opamp _csr>]
+                            .[<$opamp _csr>]()
                             .write(|csr_w|
                                 csr_w.vp_sel()
                                     .$non_inverting_mask()
@@ -531,8 +531,8 @@ macro_rules! opamps {
                                     .variant((&config).into())
                                     .opaintoen()
                                     .variant(match output {
-                                        Some(_) => OPAINTOEN_A::OutputPin,
-                                        None => OPAINTOEN_A::Adcchannel,
+                                        Some(_) => OPAINTOEN::OutputPin,
+                                        None => OPAINTOEN::Adcchannel,
                                     })
                                     .opaen()
                                     .enabled()
