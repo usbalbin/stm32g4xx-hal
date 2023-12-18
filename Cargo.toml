@@ -11,6 +11,9 @@ readme = "README.md"
 repository = "https://github.com/stm32-rs/stm32g4xx-hal"
 version = "0.0.1"
 
+[patch.crates-io]
+stm32g4 = { path = "../stm32-rs/stm32g4" }
+
 [dependencies]
 nb = "0.1.1"
 stm32g4 = "0.15.1"
@@ -58,7 +61,7 @@ optional = true
 [dev-dependencies]
 cortex-m-rt = "0.7.2"
 defmt-rtt = "0.4.0"
-cortex-m-rtic = "0.5.8"
+cortex-m-rtic = "1"
 cortex-m-semihosting = "0.3.5"
 panic-probe = { version = "0.3.0", features = ["print-defmt"] }
 panic-semihosting = "0.5.3"
@@ -74,7 +77,7 @@ embedded-sdmmc = "0.3.0"
 
 #TODO: Separate feature sets
 [features]
-default = ["rt"]
+default = ["rt", "stm32g4/stm32g474"]
 rt = ["stm32g4/rt"]
 stm32g431 = ["stm32g4/stm32g431"]
 stm32g441 = ["stm32g4/stm32g441"]
@@ -91,6 +94,7 @@ log-semihost = ["cortex-m-log/semihosting"]
 defmt-logging = ["defmt"]
 
 [profile.dev]
+#opt-level = "s"
 codegen-units = 1
 debug = true
 incremental = false
