@@ -61,7 +61,7 @@ optional = true
 [dev-dependencies]
 cortex-m-rt = "0.7.2"
 defmt-rtt = "0.4.0"
-cortex-m-rtic = "1"
+cortex-m-rtic = "0.5.8"
 cortex-m-semihosting = "0.3.5"
 panic-probe = { version = "0.3.0", features = ["print-defmt"] }
 panic-semihosting = "0.5.3"
@@ -77,7 +77,7 @@ embedded-sdmmc = "0.3.0"
 
 #TODO: Separate feature sets
 [features]
-default = ["rt", "stm32g4/stm32g474"]
+default = ["rt"]
 rt = ["stm32g4/rt"]
 stm32g431 = ["stm32g4/stm32g431"]
 stm32g441 = ["stm32g4/stm32g441"]
@@ -94,7 +94,6 @@ log-semihost = ["cortex-m-log/semihosting"]
 defmt-logging = ["defmt"]
 
 [profile.dev]
-#opt-level = "s"
 codegen-units = 1
 debug = true
 incremental = false
