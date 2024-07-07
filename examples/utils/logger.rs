@@ -1,9 +1,11 @@
 #![allow(unsafe_code)]
 cfg_if::cfg_if! {
     if #[cfg(all(feature = "log-rtt", feature = "defmt"))] {
+        #[allow(unused_imports)]
         pub use defmt::{info, trace, warn, debug, error};
 
     } else {
+        #[allow(unused_imports)]
         pub use log::{info, trace, warn, debug, error};
     }
 }
@@ -15,6 +17,7 @@ cfg_if::cfg_if! {
         use lazy_static::lazy_static;
         use log::LevelFilter;
 
+        #[allow(unused_imports)]
         pub use cortex_m_log::log::Logger;
 
         use cortex_m_log::{
@@ -56,7 +59,11 @@ cfg_if::cfg_if! {
     else if #[cfg(all(feature = "log-rtt"/*, feature = "defmt"*/))] {
         use defmt_rtt as _; // global logger
         use panic_probe as _;
+
+        #[allow(unused_imports)]
         pub use defmt::Logger;
+
+        #[allow(unused_imports)]
         pub use defmt::println;
 
         #[allow(dead_code)]
