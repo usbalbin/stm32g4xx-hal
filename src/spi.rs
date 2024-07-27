@@ -229,7 +229,7 @@ spi!(
     SPI1,
     spi1,
     sck: [
-        PA5<Alternate<AF5>>,
+        PA5<Alternate<AF5>>, //TODO: Consider making generic over output mode (PushPull/OpenDrain)
         PB3<Alternate<AF5>>,
         #[cfg(any(
             feature = "stm32g471",

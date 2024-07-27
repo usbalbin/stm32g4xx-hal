@@ -5,7 +5,7 @@ use crate::dma::{
     mux::DmaMuxResources, traits::TargetAddress, MemoryToPeripheral, PeripheralToMemory,
 };
 use crate::gpio::{gpioa::*, gpiob::*, gpioc::*, gpiod::*, gpioe::*, gpiog::*};
-use crate::gpio::{Alternate, AlternateOD, AF12, AF5, AF7, AF8};
+use crate::gpio::{Alternate, AF12, AF5, AF7, AF8};
 use crate::prelude::*;
 use crate::rcc::{Enable, GetBusFreq, Rcc, RccBus, Reset};
 use crate::stm32::*;
@@ -150,16 +150,12 @@ macro_rules! uart_shared {
 
         $(
             $( #[ $pmeta1 ] )*
-            impl TxPin<$USARTX> for $PTX<Alternate<$TAF>> {
-            }
-            impl TxPin<$USARTX> for $PTX<AlternateOD<$TAF>> {
-            }
+            impl<M> TxPin<$USARTX> for $PTX<Alternate<$TAF, M>> { }
         )+
 
         $(
             $( #[ $pmeta2 ] )*
-            impl RxPin<$USARTX> for $PRX<Alternate<$RAF>> {
-            }
+            impl<M> RxPin<$USARTX> for $PRX<Alternate<$RAF, M>> { }
         )+
 
         impl<Pin, Dma> Rx<$USARTX, Pin, Dma> {

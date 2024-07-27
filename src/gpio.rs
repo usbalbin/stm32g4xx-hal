@@ -61,8 +61,11 @@ pub enum SignalEdge {
 }
 
 /// Altername Mode (type state)
-pub struct Alternate<const A: u8>;
-pub struct AlternateOD<const A: u8>;
+pub struct Alternate<const A: u8, MODE=PushPull> {
+    _mode: PhantomData<MODE>,
+}
+
+pub type AlternateOD<const A: u8> = Alternate<A, OpenDrain>;
 
 pub const AF0: u8 = 0;
 pub const AF1: u8 = 1;

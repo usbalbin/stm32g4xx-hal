@@ -1,11 +1,11 @@
-use crate::gpio::*;
+use crate::gpio::{self, *};
 use crate::rcc::*;
 use crate::stm32::RCC;
 
 pub type LscoPin = gpioa::PA2<DefaultMode>;
 
-pub struct Lsco {
-    pin: gpioa::PA2<Alternate<AF0>>,
+pub struct Lsco<M=gpio::PushPull> {
+    pin: gpioa::PA2<Alternate<AF0, M>>,
 }
 
 impl Lsco {

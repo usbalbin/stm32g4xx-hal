@@ -205,8 +205,6 @@ use crate::time::{Hertz, NanoSecond, U32Ext};
     feature = "stm32g484"
 ))]
 use crate::gpio::gpiog::*;
-#[cfg(feature = "pwm-open-drain")]
-use crate::gpio::AlternateOD;
 #[cfg(any(
     feature = "stm32g471",
     feature = "stm32g473",
@@ -215,7 +213,7 @@ use crate::gpio::AlternateOD;
     feature = "stm32g484"
 ))]
 use crate::gpio::AF14;
-use crate::gpio::{gpioa::*, gpiob::*, gpioc::*, gpiod::*, gpioe::*, gpiof::*};
+use crate::gpio::{self, gpioa::*, gpiob::*, gpioc::*, gpiod::*, gpioe::*, gpiof::*};
 use crate::gpio::{Alternate, AF1, AF10, AF11, AF12, AF2, AF3, AF4, AF5, AF6, AF9};
 
 // This trait marks that a GPIO pin can be used with a specific timer channel
@@ -436,48 +434,26 @@ pins_tuples! {
 macro_rules! pin_impl {
     (CHX: #[ $( $pmeta:meta )* ] $PIN:ident, $ALT:ty, $TIMX:ty, $COMP:ty, $CHANNEL:ty) => {
         $( #[ $pmeta ] )*
-        impl Pins<$TIMX, $CHANNEL, $COMP> for $PIN<Alternate<$ALT>> {
-            type Channel = Pwm<$TIMX, $CHANNEL, $COMP, ActiveHigh, ActiveHigh>;
-        }
-
-        $( #[ $pmeta ] )*
-        #[cfg(feature = "pwm-open-drain")]
-        impl Pins<$TIMX, $CHANNEL, $COMP> for $PIN<AlternateOD<$ALT>> {
+        impl<M> Pins<$TIMX, $CHANNEL, $COMP> for $PIN<Alternate<$ALT, M>> {
             type Channel = Pwm<$TIMX, $CHANNEL, $COMP, ActiveHigh, ActiveHigh>;
         }
     };
 
     (CHXN: #[ $( $pmeta:meta )* ] $PIN:ident, $ALT:ty, $TIMX:ty, $CHANNEL:ty) => {
         $( #[ $pmeta ] )*
-        impl NPins<$TIMX, $CHANNEL> for $PIN<Alternate<$ALT>> {}
-
-        $( #[ $pmeta ] )*
-        #[cfg(feature = "pwm-open-drain")]
-        impl NPins<$TIMX, $CHANNEL> for $PIN<AlternateOD<$ALT>> {}
+        impl<M> NPins<$TIMX, $CHANNEL> for $PIN<Alternate<$ALT, M>> {}
     };
 
     (BRK: #[ $( $pmeta:meta )* ] $PINBRK:ident, $ALTBRK:ty, $TIMX:ty) => {
         $( #[ $pmeta ] )*
-        impl FaultPins<$TIMX> for $PINBRK<Alternate<$ALTBRK>> {
-            const INPUT: BreakInput = BreakInput::BreakIn;
-        }
-
-        $( #[ $pmeta ] )*
-        #[cfg(feature = "pwm-open-drain")]
-        impl FaultPins<$TIMX> for $PINBRK<AlternateOD<$ALTBRK>> {
+        impl<M> FaultPins<$TIMX> for $PINBRK<Alternate<$ALTBRK, M>> {
             const INPUT: BreakInput = BreakInput::BreakIn;
         }
     };
 
     (BRK2: #[ $( $pmeta:meta )* ] $PINBRK2:ident, $ALTBRK2:ty, $TIMX:ty) => {
         $( #[ $pmeta ] )*
-        impl FaultPins<$TIMX> for $PINBRK2<Alternate<$ALTBRK2>> {
-            const INPUT: BreakInput = BreakInput::BreakIn;
-        }
-
-        $( #[ $pmeta ] )*
-        #[cfg(feature = "pwm-open-drain")]
-        impl FaultPins<$TIMX> for $PINBRK2<AlternateOD<$ALTBRK2>> {
+        impl<M> FaultPins<$TIMX> for $PINBRK2<Alternate<$ALTBRK2, M>> {
             const INPUT: BreakInput = BreakInput::BreakIn2;
         }
     };
