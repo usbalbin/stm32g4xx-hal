@@ -2848,6 +2848,15 @@ adc_op_follower!(
 ))]
 adc_op_pga!(
     opamp::opamp3::Pga<A, B> => (ADC3, 13),
+);
+
+#[cfg(any(
+    feature = "stm32g473",
+    feature = "stm32g474",
+    feature = "stm32g483",
+    feature = "stm32g484",
+))]
+adc_op_pga!(
     opamp::opamp4::Pga<A, B> => (ADC5, 5),
     opamp::opamp5::Pga<A, B> => (ADC5, 3),
     opamp::opamp6::Pga<A, B> => (ADC4, 17),
