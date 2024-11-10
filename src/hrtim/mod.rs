@@ -566,7 +566,7 @@ macro_rules! hrtim_hal {
 
                     hrtim_finalize_body!(
                         self, PreloadSource,
-                        $TIMX: ($timXcr, ck_pscx, $perXr, perx, $tXcen, $rep, $repx, $dier, $repie, $timXcr2, $fltXr, $eefXr1, $eefXr2, $Xeefr3, $outXr, $dtXr),
+                        $TIMX: ($timXcr, ckpscx, $perXr, perx, $tXcen, $rep, $repx, $dier, $repie, $timXcr2, $fltXr, $eefXr1, $eefXr2, $Xeefr3, $outXr, $dtXr),
                     )
                 }
 
@@ -737,7 +737,7 @@ hrtim_hal! {
 }
 
 hrtim_hal_master! {
-    HRTIM_MASTER: (mcr, ck_psc, mper, mper, mrep, mcen, mdier, mrepie),
+    HRTIM_MASTER: (mcr, ckpsc, mper, mper, mrep, mcen, mdier, mrepie),
 }
 
 /// # Safety
