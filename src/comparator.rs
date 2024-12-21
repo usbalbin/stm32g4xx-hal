@@ -148,12 +148,12 @@ pub trait PositiveInput<C> {
 pub trait NegativeInput<C> {
     /// Does this input use the internal reference Vrefint
     ///
-    /// This only true for RefintInput
+    /// This only true for [`RefintInput`]
     const USE_VREFINT: bool;
 
     /// Does this input rely on dividing Vrefint using an internal resistor divider
     ///
-    /// This is only relevant for `RefintInput` other than `RefintInput::VRefint`
+    /// This is only relevant for [`RefintInput`] other than [`refint_input::VRefint`]
     const USE_RESISTOR_DIVIDER: bool = false;
 
     fn setup(comp: &mut C);
@@ -307,7 +307,7 @@ refint_input!(COMP5, COMP6, COMP7,);
 
 macro_rules! dac_input_helper {
     ($COMP:ident: $channel:ident, $MODE:ident, $bits:expr) => {
-        impl<ED> NegativeInput<$COMP> for &dac::$channel<{ dac::$MODE }, ED> {
+        impl<ED> NegativeInput<$COMP> for dac::$channel<{ dac::$MODE }, ED> {
             const USE_VREFINT: bool = false;
 
             fn setup(comp: &mut $COMP) {
