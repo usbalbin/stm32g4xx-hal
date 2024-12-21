@@ -1,6 +1,7 @@
 //! General Purpose Input / Output
 use core::marker::PhantomData;
 
+use crate::observable::Observable;
 use crate::rcc::Rcc;
 use crate::stm32::EXTI;
 use crate::syscfg::SysCfg;
@@ -378,6 +379,8 @@ macro_rules! gpio {
                         self.into_push_pull_output()
                     }
                 }
+
+                impl<MODE> Observable for $PXi<MODE> { }
 
                 impl<MODE> $PXi<MODE> {
                     /// Configures the pin to operate as a floating input pin

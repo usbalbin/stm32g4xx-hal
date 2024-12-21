@@ -84,6 +84,7 @@ pub mod exti;
 pub mod flash;
 pub mod gpio;
 pub mod i2c;
+pub mod observable;
 pub mod opamp;
 pub mod prelude;
 pub mod pwm;
