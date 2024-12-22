@@ -61,7 +61,7 @@ fn main() -> ! {
     // * 0V   at p1 =>   0% duty
     // * VDDA at p1 => 100% duty
     loop {
-        dac.as_mut().set_value(val);
+        dac.set_value(val);
         match val {
             0 => dir = Direction::Upcounting,
             4095 => dir = Direction::Downcounting,
