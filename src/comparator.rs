@@ -34,7 +34,7 @@ use crate::gpio::{
 use crate::gpio::gpioc::{PC0, PC1};
 use crate::gpio::gpioe::{PE7, PE8};
 use crate::gpio::gpiof::PF1;
-use crate::observable::IntoObservationToken;
+use crate::observable::ObservationLock;
 use crate::rcc::{Clocks, Rcc};
 use crate::stm32::{COMP, EXTI};
 
@@ -398,8 +398,8 @@ pub trait ComparatorExt<COMP> {
     where
         PP: PositiveInput<COMP>,
         NP: NegativeInput<COMP>,
-        P: IntoObservationToken<Peripheral = PP>,
-        N: IntoObservationToken<Peripheral = NP>;
+        P: ObservationLock<Peripheral = PP>,
+        N: ObservationLock<Peripheral = NP>;
 }
 
 macro_rules! impl_comparator {
@@ -415,8 +415,8 @@ macro_rules! impl_comparator {
             where
                 PP: PositiveInput<$COMP>,
                 NP: NegativeInput<$COMP>,
-                P: IntoObservationToken<Peripheral = PP>,
-                N: IntoObservationToken<Peripheral = NP>,
+                P: ObservationLock<Peripheral = PP>,
+                N: ObservationLock<Peripheral = NP>,
             {
                 PP::setup(&mut self);
                 PP::setup(&mut self);
@@ -453,8 +453,8 @@ macro_rules! impl_comparator {
             where
                 PP: PositiveInput<$COMP>,
                 NP: NegativeInput<$COMP>,
-                P: IntoObservationToken<Peripheral = PP>,
-                N: IntoObservationToken<Peripheral = NP>,
+                P: ObservationLock<Peripheral = PP>,
+                N: ObservationLock<Peripheral = NP>,
             {
                 comp.comparator(positive_input, negative_input, config, clocks)
             }
