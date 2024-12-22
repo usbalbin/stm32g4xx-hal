@@ -35,8 +35,88 @@ pub struct ObservationToken<P: Observable> {
 
 /// A trait providing an interface to make peripherals observed
 ///
-/// See [`Observed`] and [`ObservationToken`]
+/// See [`Observable::observe`], [`Observed`] and [`ObservationToken`]
 pub trait Observable: Sized {
+    /// Observe this peripheral to split it into a [`Observed<Self>`] and a set of [`ObservationToken`]'s
+    ///
+    /// This is useful when you need the same peripherals for multiple things at the same time.
+    ///
+    /// For example let's say you want to keep track of the voltage of a pin. You want to log it
+    /// every second but if it rises above a threshold then you need to react really fast.
+    ///
+    /// This can be solved by connecting the pin to a comparator that compares the pins
+    /// voltage to a reference. If the voltage rises above the reference then the comparator
+    /// will quickly detect this and an interrupt can be generated or similar (not shown here).
+    ///
+    /// ```
+    /// let dp = stm32::Peripherals::take().unwrap();
+    /// let mut rcc = dp.RCC.constrain();
+    ///
+    /// let gpioa = dp.GPIOA.split(&mut rcc);
+    ///
+    /// let (comp1, comp2, ..) = dp.COMP.split(&mut rcc);
+    ///
+    /// let pa1 = gpioa.pa1.into_analog(); // <- The pin to keep track of
+    /// let pa0 = gpioa.pa0.into_analog(); // <- Reference voltage
+    ///
+    /// // Pins consumed here
+    /// let comp1 = comp1.comparator(pa1, pa0, Config::default(), &rcc.clocks);
+    /// let comp1 = comp1.enable();
+    ///
+    /// // Can not use pa0 and pa1 for AD readings
+    /// ```
+    ///
+    /// However we still want to perform AD readings every second. Since the pins are consumed
+    /// by the comparator this is impossible.
+    ///
+    /// It turns ut that to construct the comparator we do not actually need a pin. We
+    /// just need proof that there is a pin that is setup in the correct mode and which
+    /// will stay in that mode as long as the comparator lives.
+    ///
+    /// This is where [`Observable::observe`] comes in. It splits the peripheral, in this case
+    /// a pin, into an [`Observed<Self>`] and a set of [`ObservationToken`]'s. The `Observed`
+    /// type can be used just like the peripheral would normally be used. For our pin we can
+    /// use it to perform AD readings etc. There is however one vital difference, we can not
+    /// reconfigure the observed peripheral. The `ObservationToken`'s on the other hand
+    /// are tokens that proove that the peripheral will not be reconfigured. These can then
+    /// be used instead of the peripheral to pass as arguments to other peripherals.
+    ///
+    /// ```
+    /// let dp = stm32::Peripherals::take().unwrap();
+    /// let mut rcc = dp.RCC.constrain();
+    ///
+    /// let gpioa = dp.GPIOA.split(&mut rcc);
+    ///
+    /// let (comp1, comp2, ..) = dp.COMP.split(&mut rcc);
+    ///
+    /// let (pa1, [pa1_token]) = gpioa // <- The pin to keep track of
+    ///     .pa1
+    ///     .into_analog()
+    ///     .observe();
+    /// let pa0 = gpioa.pa0.into_analog(); // <- Reference voltage
+    ///
+    /// // Only pa1_token and pa0 consumed here
+    /// let comp1 = comp1.comparator(pa1_token, pa0, Config::default(), &rcc.clocks);
+    /// let comp1 = comp1.enable();
+    ///
+    /// let mut delay = cp.SYST.delay(&rcc.clocks);
+    /// let mut adc = dp.ADC2.claim_and_configure(
+    ///     stm32g4xx_hal::adc::ClockSource::SystemClock,
+    ///     &rcc,
+    ///     stm32g4xx_hal::adc::config::AdcConfig::default(),
+    ///     &mut delay,
+    ///     false,
+    /// );
+    ///
+    /// // Can not reconfigure pa1 here
+    ///
+    /// loop {
+    ///     // Can still use pa1 here
+    ///     let sample = adc.convert(&pa1, SampleTime::Cycles_640_5);
+    ///     defmt::info!("Reading: {}", sample);
+    ///     delay.delay(1000.millis());
+    /// }
+    /// ```
     fn observe<const N: usize>(self) -> (Observed<Self, N>, [ObservationToken<Self>; N]) {
         (
             Observed { peripheral: self },
