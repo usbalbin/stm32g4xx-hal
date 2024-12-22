@@ -1,9 +1,8 @@
 use crate::Sealed;
 use core::marker::PhantomData;
 
-pub trait IntoObservationToken: Sized + crate::Sealed {
-    type Peripheral;
-    fn into_ot(self) -> ObservationToken<Self::Peripheral>;
+pub trait ObservationLock: Sized + crate::Sealed {
+    type Peripheral: Observable;
 }
 
 /// A struct to hold peripherals which are to be observed.
@@ -16,7 +15,7 @@ pub struct Observed<P, const OBSERVER_COUNT: usize> {
     peripheral: P,
 }
 
-impl<P, const OBSERVER_COUNT: usize> Observed<P, OBSERVER_COUNT> {
+impl<P: Observable, const OBSERVER_COUNT: usize> Observed<P, OBSERVER_COUNT> {
     /// Release the observation of this peripheral
     ///
     /// This returns the underlaying perpheral type. Since it is no longer
@@ -46,20 +45,13 @@ pub trait Observable: Sized {
     }
 }
 
-impl<P: Observable + Sealed> IntoObservationToken for P {
+impl<P: Observable + Sealed> ObservationLock for P {
     type Peripheral = P;
-    fn into_ot(self) -> ObservationToken<Self::Peripheral> {
-        let (_peripheral, [ot]) = self.observe();
-        ot
-    }
 }
 
 impl<P: Observable + Sealed> Sealed for ObservationToken<P> {}
-impl<P: Observable + Sealed> IntoObservationToken for ObservationToken<P> {
+impl<P: Observable + Sealed> ObservationLock for ObservationToken<P> {
     type Peripheral = P;
-    fn into_ot(self) -> Self {
-        self
-    }
 }
 
 impl<P, const N: usize> AsRef<P> for Observed<P, N> {
