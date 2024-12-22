@@ -1,5 +1,5 @@
 use crate::Sealed;
-use core::marker::PhantomData;
+use core::{marker::PhantomData, ops};
 
 pub trait ObservationLock: Sized + crate::Sealed {
     type Peripheral: Observable;
@@ -62,6 +62,20 @@ impl<P: Observable, const N: usize> AsRef<P> for Observed<P, N> {
 
 impl<P: Observable, const N: usize> AsMut<P> for Observed<P, N> {
     fn as_mut(&mut self) -> &mut P {
+        &mut self.peripheral
+    }
+}
+
+impl<P: Observable, const N: usize> ops::Deref for Observed<P, N> {
+    type Target = P;
+
+    fn deref(&self) -> &Self::Target {
+        &self.peripheral
+    }
+}
+
+impl<P: Observable, const N: usize> ops::DerefMut for Observed<P, N> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.peripheral
     }
 }
