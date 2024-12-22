@@ -11,7 +11,7 @@ pub trait ObservationLock: Sized + crate::Sealed {
 /// preventing things like a an observed gpio pin changing mode or an opamp from
 /// being disabled. This makes sure the underlaying peripheral will not
 /// change mode into something that is not compatible with what ever may be observing it.
-pub struct Observed<P, const OBSERVER_COUNT: usize> {
+pub struct Observed<P: Observable, const OBSERVER_COUNT: usize> {
     peripheral: P,
 }
 
@@ -29,7 +29,7 @@ impl<P: Observable, const OBSERVER_COUNT: usize> Observed<P, OBSERVER_COUNT> {
 ///
 /// The existence of this type guarantees that the observed peripheral will not
 /// change mode into something that is not compatibe with what ever is observing it
-pub struct ObservationToken<P> {
+pub struct ObservationToken<P: Observable> {
     _p: PhantomData<P>,
 }
 
@@ -54,13 +54,13 @@ impl<P: Observable + Sealed> ObservationLock for ObservationToken<P> {
     type Peripheral = P;
 }
 
-impl<P, const N: usize> AsRef<P> for Observed<P, N> {
+impl<P: Observable, const N: usize> AsRef<P> for Observed<P, N> {
     fn as_ref(&self) -> &P {
         &self.peripheral
     }
 }
 
-impl<P, const N: usize> AsMut<P> for Observed<P, N> {
+impl<P: Observable, const N: usize> AsMut<P> for Observed<P, N> {
     fn as_mut(&mut self) -> &mut P {
         &mut self.peripheral
     }
