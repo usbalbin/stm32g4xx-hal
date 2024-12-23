@@ -9,6 +9,7 @@
 #![no_std]
 
 mod utils;
+use utils::logger::info;
 extern crate cortex_m_rt as rt;
 
 use fugit::ExtU32 as _;
@@ -57,7 +58,7 @@ fn main() -> ! {
     loop {
         // Can still use pa1 here
         let sample = adc.convert(pa1.as_ref(), SampleTime::Cycles_640_5);
-        defmt::info!("Reading: {}", sample);
+        info!("Reading: {}", sample);
         delay.delay(1000.millis());
     }
 }
