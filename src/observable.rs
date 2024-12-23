@@ -82,12 +82,13 @@ pub trait Observable: Sized {
     /// be used instead of the peripheral to pass as arguments to other peripherals.
     ///
     /// ```
+    /// let cp = cortex_m::Peripherals::take().unwrap();
     /// let dp = stm32::Peripherals::take().unwrap();
     /// let mut rcc = dp.RCC.constrain();
     ///
     /// let gpioa = dp.GPIOA.split(&mut rcc);
     ///
-    /// let (comp1, comp2, ..) = dp.COMP.split(&mut rcc);
+    /// let (comp1, ..) = dp.COMP.split(&mut rcc);
     ///
     /// let (pa1, [pa1_token]) = gpioa // <- The pin to keep track of
     ///     .pa1
@@ -97,10 +98,10 @@ pub trait Observable: Sized {
     ///
     /// // Only pa1_token and pa0 consumed here
     /// let comp1 = comp1.comparator(pa1_token, pa0, Config::default(), &rcc.clocks);
-    /// let comp1 = comp1.enable();
+    /// let _comp1 = comp1.enable(); // <-- TODO: Do things with comparator
     ///
     /// let mut delay = cp.SYST.delay(&rcc.clocks);
-    /// let mut adc = dp.ADC2.claim_and_configure(
+    /// let mut adc = dp.ADC1.claim_and_configure(
     ///     stm32g4xx_hal::adc::ClockSource::SystemClock,
     ///     &rcc,
     ///     stm32g4xx_hal::adc::config::AdcConfig::default(),
@@ -109,10 +110,9 @@ pub trait Observable: Sized {
     /// );
     ///
     /// // Can not reconfigure pa1 here
-    ///
     /// loop {
     ///     // Can still use pa1 here
-    ///     let sample = adc.convert(&pa1, SampleTime::Cycles_640_5);
+    ///     let sample = adc.convert(pa1.as_ref(), SampleTime::Cycles_640_5);
     ///     defmt::info!("Reading: {}", sample);
     ///     delay.delay(1000.millis());
     /// }
