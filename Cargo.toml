@@ -14,6 +14,7 @@ version = "0.0.2"
 [dependencies]
 nb = "1"
 stm32g4 = { version = "0.21.0", package = "stm32g4-staging" }
+proto-hal = { git = "https://github.com/AdinAck/proto-hal", rev = "9030895" }
 paste = "1.0"
 bitflags = "1.2"
 vcell = "0.1"

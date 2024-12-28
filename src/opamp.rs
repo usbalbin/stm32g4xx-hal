@@ -59,8 +59,8 @@
 
 // TODO: Add support for calibration
 
-use crate::observable::{Observable, ObservationLock};
 use core::marker::PhantomData;
+use proto_hal::stasis;
 
 /// PGA Gain
 pub enum Gain {
@@ -147,8 +147,8 @@ where
         gain: Gain,
     ) -> Pga<Opamp, NonInverting, InternalOutput>
     where
-        F: ObservationLock<Peripheral = Opamp::Vinm0>,
-        Opamp::Vinm0: Observable;
+        F: stasis::EntitlementLock<Resource = Opamp::Vinm0>,
+        Opamp::Vinm0: stasis::Freeze;
 
     /// Configures the opamp for programmable gain operation, with
     /// external filtering.
@@ -159,8 +159,8 @@ where
         gain: Gain,
     ) -> Pga<Opamp, NonInverting, InternalOutput>
     where
-        N: ObservationLock<Peripheral = Opamp::Vinm0>,
-        Opamp::Vinm0: Observable;
+        N: stasis::EntitlementLock<Resource = Opamp::Vinm0>,
+        Opamp::Vinm0: stasis::Freeze;
 
     /// Configures the opamp for programmable gain operation, with
     /// external filtering.
@@ -172,10 +172,10 @@ where
         gain: Gain,
     ) -> Pga<Opamp, NonInverting, InternalOutput>
     where
-        N: ObservationLock<Peripheral = Opamp::Vinm0>,
-        F: ObservationLock<Peripheral = Opamp::Vinm1>,
-        Opamp::Vinm0: Observable,
-        Opamp::Vinm1: Observable;
+        N: stasis::EntitlementLock<Resource = Opamp::Vinm0>,
+        F: stasis::EntitlementLock<Resource = Opamp::Vinm1>,
+        Opamp::Vinm0: stasis::Freeze,
+        Opamp::Vinm1: stasis::Freeze;
 }
 
 /// Internal trait implementing the low level register write used to
@@ -185,9 +185,9 @@ where
     Opamp: LookupPgaGain,
 {
     /// Type of the associated vinm0 input.
-    type Vinm0: Observable;
+    type Vinm0: stasis::Freeze;
     /// Type of the associated vinm1 input.
-    type Vinm1: Observable;
+    type Vinm1: stasis::Freeze;
 
     /// Write the opamp CSR register configuring the opamp PGA.
     ///
@@ -377,8 +377,7 @@ macro_rules! opamps {
                     }
                 }
 
-                impl<Input, Output> crate::Sealed for Follower<$opamp, Input, Output> { }
-                impl<Input, Output> crate::observable::Observable for Follower<$opamp, Input, Output> { }
+                impl<Input, Output> stasis::Freeze for Follower<$opamp, Input, Output> { }
 
                 impl<Input, Output> Follower<$opamp, Input, Output> {
                     /// Set the lock bit in the registers. After the lock bit is
@@ -419,7 +418,7 @@ macro_rules! opamps {
 
                     /// Enables the external output pin.
                     pub fn enable_output<O>(self, output: O) -> Follower<$opamp, Input, O>
-                        where O: ObservationLock<Peripheral = $output>
+                        where O: stasis::EntitlementLock<Resource = $output>
                     {
                         unsafe { $opamp::_enable_output(); }
 
@@ -431,8 +430,7 @@ macro_rules! opamps {
                     }
                 }
 
-                impl<NonInverting, Inverting, Output> crate::Sealed for OpenLoop<$opamp, NonInverting, Inverting, Output> { }
-                impl<NonInverting, Inverting, Output> crate::observable::Observable for OpenLoop<$opamp, NonInverting, Inverting, Output> { }
+                impl<NonInverting, Inverting, Output> stasis::Freeze for OpenLoop<$opamp, NonInverting, Inverting, Output> { }
 
                 impl<NonInverting, Inverting, Output> OpenLoop<$opamp, NonInverting, Inverting, Output> {
                     /// Set the lock bit in the registers. After the lock bit is
@@ -474,7 +472,7 @@ macro_rules! opamps {
 
                     /// Enables the external output pin.
                     pub fn enable_output<O>(self, output: O) -> OpenLoop<$opamp, NonInverting, Inverting, O>
-                        where O: ObservationLock<Peripheral = $output>,
+                        where O: stasis::EntitlementLock<Resource = $output>,
                     {
                         unsafe { $opamp::_enable_output(); }
 
@@ -487,8 +485,7 @@ macro_rules! opamps {
                     }
                 }
 
-                impl<NonInverting, Output> crate::Sealed for Pga<$opamp, NonInverting, Output> { }
-                impl<NonInverting, Output> crate::observable::Observable for Pga<$opamp, NonInverting, Output> { }
+                impl<NonInverting, Output> stasis::Freeze for Pga<$opamp, NonInverting, Output> { }
 
                 impl<NonInverting, Output> Pga<$opamp, NonInverting, Output> {
                     /// Set the lock bit in the registers. After the lock bit is
@@ -529,7 +526,7 @@ macro_rules! opamps {
                     /// Enables the external output pin.
                     pub fn enable_output<O>(self, output: O) -> Pga<$opamp, NonInverting, O>
                     where
-                        O: ObservationLock<Peripheral = $output>,
+                        O: stasis::EntitlementLock<Resource = $output>,
                     {
                         unsafe { $opamp::_enable_output(); }
 
@@ -588,7 +585,7 @@ macro_rules! opamps {
             impl<I, Input> IntoFollower<$opamp, Input, InternalOutput> for Disabled<$opamp>
                 where
                     I: NonInverting<$opamp, VP_SEL=crate::stm32::opamp::[<$opampreg _csr>]::VP_SEL>,
-                    Input: ObservationLock<Peripheral = I>,
+                    Input: stasis::EntitlementLock<Resource = I>,
             {
                 fn follower(
                     self,
@@ -627,8 +624,8 @@ macro_rules! opamps {
                 where
                     PP: NonInverting<$opamp, VP_SEL=crate::stm32::opamp::[<$opampreg _csr>]::VP_SEL>,
                     NP: Inverting<$opamp, VM_SEL=crate::stm32::opamp::[<$opampreg _csr>]::VM_SEL>,
-                    P: ObservationLock<Peripheral = PP>,
-                    N: ObservationLock<Peripheral = NP>,
+                    P: stasis::EntitlementLock<Resource = PP>,
+                    N: stasis::EntitlementLock<Resource = NP>,
             {
                 fn open_loop(
                     self,
@@ -669,7 +666,7 @@ macro_rules! opamps {
             impl<PP, P> ConfigurePgaReg<$opamp, P> for $opamp
                 where
                     PP: NonInverting<$opamp, VP_SEL=crate::stm32::opamp::[<$opampreg _csr>]::VP_SEL>,
-                    P: ObservationLock<Peripheral = PP>,
+                    P: stasis::EntitlementLock<Resource = PP>,
             {
                 type Vinm0 = $vinm0;
                 type Vinm1 = $vinm1;
@@ -696,7 +693,7 @@ macro_rules! opamps {
             impl<PP, P> IntoPga<$opamp, P> for Disabled<$opamp>
                 where
                     PP: NonInverting<$opamp, VP_SEL=crate::stm32::opamp::[<$opampreg _csr>]::VP_SEL>,
-                    P: ObservationLock<Peripheral = PP>,
+                    P: stasis::EntitlementLock<Resource = PP>,
             {
                 fn pga(
                     self,
@@ -705,7 +702,7 @@ macro_rules! opamps {
                 ) -> Pga<$opamp, P, InternalOutput>
                     where
                         PP: NonInverting<$opamp, VP_SEL=crate::stm32::opamp::[<$opampreg _csr>]::VP_SEL>,
-                        P: ObservationLock<Peripheral = PP>,
+                        P: stasis::EntitlementLock<Resource = PP>,
                 {
                     $opamp::configure_pga(gain, PgaMode::Pga)
                 }
@@ -718,8 +715,8 @@ macro_rules! opamps {
                     gain: Gain,
                 ) -> Pga<$opamp, P, InternalOutput>
                     where
-                        F: ObservationLock<Peripheral = <$opamp as ConfigurePgaReg<$opamp, P>>::Vinm0>,
-                        F::Peripheral: Observable
+                        F: stasis::EntitlementLock<Resource = <$opamp as ConfigurePgaReg<$opamp, P>>::Vinm0>,
+                        F::Resource: stasis::Freeze
                 {
                     $opamp::configure_pga(gain, PgaMode::PgaExternalFilter)
                 }
@@ -732,8 +729,8 @@ macro_rules! opamps {
                     gain: Gain,
                 ) -> Pga<$opamp, P, InternalOutput>
                     where
-                        N: ObservationLock<Peripheral = <$opamp as ConfigurePgaReg<$opamp, P>>::Vinm0>,
-                        N::Peripheral: Observable
+                        N: stasis::EntitlementLock<Resource = <$opamp as ConfigurePgaReg<$opamp, P>>::Vinm0>,
+                        N::Resource: stasis::Freeze
                 {
                     $opamp::configure_pga(gain, PgaMode::PgaExternalBias)
                 }
@@ -747,8 +744,8 @@ macro_rules! opamps {
                     gain: Gain,
                 ) -> Pga<$opamp, P, InternalOutput>
                     where
-                        N: ObservationLock<Peripheral = <$opamp as ConfigurePgaReg<$opamp, P>>::Vinm0>,
-                        F: ObservationLock<Peripheral = <$opamp as ConfigurePgaReg<$opamp, P>>::Vinm1>,
+                        N: stasis::EntitlementLock<Resource = <$opamp as ConfigurePgaReg<$opamp, P>>::Vinm0>,
+                        F: stasis::EntitlementLock<Resource = <$opamp as ConfigurePgaReg<$opamp, P>>::Vinm1>,
                 {
                     $opamp::configure_pga(gain, PgaMode::PgaExternalBiasAndFilter)
                 }

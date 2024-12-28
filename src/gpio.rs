@@ -2,7 +2,6 @@
 use core::marker::PhantomData;
 
 use crate::rcc::{Enable, Rcc, Reset};
-use crate::observable::Observable;
 use crate::stm32::EXTI;
 use crate::syscfg::SysCfg;
 
@@ -443,7 +442,7 @@ macro_rules! gpio {
                     }
                 }
 
-                impl<MODE> Observable for $PXi<MODE> { }
+                impl<MODE> proto_hal::stasis::Freeze for $PXi<MODE> { }
 
                 impl<MODE> $PXi<MODE> {
                     /// Configures the pin to operate as a floating input pin
