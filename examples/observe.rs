@@ -18,10 +18,10 @@ use hal::{
     comparator::{ComparatorExt, ComparatorSplit, Config},
     delay::SYSTDelayExt as _,
     gpio::GpioExt,
-    observable::Observable as _,
     rcc::RccExt,
     stm32,
 };
+use proto_hal::stasis::Freeze;
 use rt::entry;
 use stm32g4xx_hal::{self as hal, adc::config::SampleTime, delay::DelayExt as _};
 
@@ -38,7 +38,7 @@ fn main() -> ! {
     let (pa1, [pa1_token]) = gpioa // <- The pin to keep track of
         .pa1
         .into_analog()
-        .observe();
+        .freeze();
     let pa0 = gpioa.pa0.into_analog(); // <- Reference voltage
 
     // Only pa1_token and pa0 consumed here
@@ -57,7 +57,7 @@ fn main() -> ! {
     // Can not reconfigure pa1 here
     loop {
         // Can still use pa1 here
-        let sample = adc.convert(pa1.as_ref(), SampleTime::Cycles_640_5);
+        let sample = adc.convert(&pa1, SampleTime::Cycles_640_5);
         info!("Reading: {}", sample);
         delay.delay(1000.millis());
     }

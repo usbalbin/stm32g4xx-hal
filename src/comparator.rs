@@ -34,9 +34,9 @@ use crate::gpio::{
 use crate::gpio::gpioc::{PC0, PC1};
 use crate::gpio::gpioe::{PE7, PE8};
 use crate::gpio::gpiof::PF1;
-use crate::observable::ObservationLock;
 use crate::rcc::{Clocks, Rcc};
 use crate::stm32::{COMP, EXTI};
+use proto_hal::stasis;
 
 /// Enabled Comparator (type state)
 pub struct Enabled;
@@ -265,8 +265,7 @@ pub mod refint_input {
                 const USE_RESISTOR_DIVIDER: bool = $use_r_div;
             }
 
-            impl crate::observable::Observable for $t {}
-            impl crate::Sealed for $t {}
+            impl proto_hal::stasis::Freeze for $t {}
         };
     }
 
@@ -398,8 +397,8 @@ pub trait ComparatorExt<COMP> {
     where
         PP: PositiveInput<COMP>,
         NP: NegativeInput<COMP>,
-        P: ObservationLock<Peripheral = PP>,
-        N: ObservationLock<Peripheral = NP>;
+        P: stasis::EntitlementLock<Resource = PP>,
+        N: stasis::EntitlementLock<Resource = NP>;
 }
 
 macro_rules! impl_comparator {
@@ -415,8 +414,8 @@ macro_rules! impl_comparator {
             where
                 PP: PositiveInput<$COMP>,
                 NP: NegativeInput<$COMP>,
-                P: ObservationLock<Peripheral = PP>,
-                N: ObservationLock<Peripheral = NP>,
+                P: stasis::EntitlementLock<Resource = PP>,
+                N: stasis::EntitlementLock<Resource = NP>,
             {
                 PP::setup(&mut self);
                 PP::setup(&mut self);
@@ -453,8 +452,8 @@ macro_rules! impl_comparator {
             where
                 PP: PositiveInput<$COMP>,
                 NP: NegativeInput<$COMP>,
-                P: ObservationLock<Peripheral = PP>,
-                N: ObservationLock<Peripheral = NP>,
+                P: stasis::EntitlementLock<Resource = PP>,
+                N: stasis::EntitlementLock<Resource = NP>,
             {
                 comp.comparator(positive_input, negative_input, config, clocks)
             }
