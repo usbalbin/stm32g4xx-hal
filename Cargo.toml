@@ -96,6 +96,7 @@ log-rtt = []
 log-semihost = ["cortex-m-log/semihosting"]
 defmt-logging = ["defmt"]
 cordic = ["dep:fixed"]
+fmac = ["dep:fixed"]
 
 [profile.dev]
 codegen-units = 1
