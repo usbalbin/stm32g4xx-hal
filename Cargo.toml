@@ -121,3 +121,7 @@ required-features = ["usb"]
 [[example]]
 name = "cordic"
 required-features = ["cordic"]
+
+[[example]]
+name = "fmac"
+required-features = ["fmac"]
