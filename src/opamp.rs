@@ -378,6 +378,7 @@ macro_rules! opamps {
                 }
 
                 impl<Input, Output> stasis::Freeze for Follower<$opamp, Input, Output> { }
+                impl<Output> stasis::Freeze for Locked<$opamp, Output> { }
 
                 impl<Input, Output> Follower<$opamp, Input, Output> {
                     /// Set the lock bit in the registers. After the lock bit is
