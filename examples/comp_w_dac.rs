@@ -7,7 +7,7 @@ mod utils;
 extern crate cortex_m_rt as rt;
 
 use rt::entry;
-use stm32g4xx_hal::observable::Observable;
+use proto_hal::stasis::Freeze;
 
 #[entry]
 fn main() -> ! {
@@ -31,7 +31,7 @@ fn main() -> ! {
     // which just so happens is compatible with comp1
     let dac1ch1 = dp.DAC1.constrain((gpioa.pa4, Dac1IntSig1), &mut rcc);
     let dac = dac1ch1.calibrate_buffer(&mut delay).enable();
-    let (mut dac, [dac_token]) = dac.observe();
+    let (mut dac, [dac_token]) = dac.freeze();
 
     let (comp1, _comp2, ..) = dp.COMP.split(&mut rcc);
     let pa1 = gpioa.pa1.into_analog();
