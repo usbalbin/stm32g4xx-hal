@@ -52,12 +52,16 @@ impl Vref {
         Self::sample_to_millivolts_ext(sample, VDDA_CALIB, config::Resolution::Twelve)
     }
 }
+impl stasis::Freeze for Vref {}
 
 /// Vbat internal signal, used for monitoring the battery (if used)
 pub struct Vbat;
+impl stasis::Freeze for Vbat {}
 
 /// Core temperature internal signal
 pub struct Temperature;
+impl stasis::Freeze for Temperature {}
+
 impl Temperature {
     /// Precompute the inverse of `VTEMP_CAL_VREFANALOG`, in volts,
     /// for floating point calculations
@@ -132,15 +136,38 @@ impl Temperature {
     }
 }
 
+// TODO: Is there any way to avoid this wrapper to overcome the orphan rule
+/// Wrapper to side step orphan rule
+pub struct Ad<T>(T);
+macro_rules! adc_channel_helper {
+    ($adc:ident, $chan:expr, $r:ty, $($a:ident),*) => {
+        impl<$($a,)*> Channel<Ad<stm32::$adc>> for stasis::Entitlement<$r> {
+            type ID = u8;
+            fn channel() -> u8 {
+                $chan
+            }
+        }
+
+        impl<const N: usize, $($a,)*> Channel<Ad<stm32::$adc>> for stasis::Frozen<$r, N> {
+            type ID = u8;
+            fn channel() -> u8 {
+                $chan
+            }
+        }
+
+        impl<$($a,)*> Channel<Ad<stm32::$adc>> for $r {
+            type ID = u8;
+            fn channel() -> u8 {
+                $chan
+            }
+        }
+    };
+}
+
 macro_rules! adc_pins {
     ($($pin:ty => ($adc:ident, $chan:expr)),+ $(,)*) => {
         $(
-            impl<P> Channel<stm32::$adc> for P
-                where P: stasis::EntitlementLock<Resource = $pin>
-            {
-                type ID = u8;
-                fn channel() -> u8 { $chan }
-            }
+            adc_channel_helper!($adc, $chan, $pin,);
         )+
     };
 }
@@ -148,33 +175,10 @@ macro_rules! adc_pins {
 macro_rules! adc_opamp {
     ($($opamp:ty => ($adc:ident, $chan:expr)),+ $(,)*) => {
         $(
-            impl<A, P> Channel<stm32::$adc> for P
-                where P: stasis::EntitlementLock<Resource = opamp::Follower<$opamp, A, InternalOutput>>
-            {
-                type ID = u8;
-                fn channel() -> u8 { $chan }
-            }
-
-            impl<A, B, P> Channel<stm32::$adc> for P
-                where P: stasis::EntitlementLock<Resource = opamp::OpenLoop<$opamp, A, B, InternalOutput>>
-            {
-                type ID = u8;
-                fn channel() -> u8 { $chan }
-            }
-
-            impl<A, P> Channel<stm32::$adc> for P
-                where P: stasis::EntitlementLock<Resource = opamp::Pga<$opamp, A, InternalOutput>>
-            {
-                type ID = u8;
-                fn channel() -> u8 { $chan }
-            }
-
-            impl<P> Channel<stm32::$adc> for P
-                where P: stasis::EntitlementLock<Resource = opamp::Locked<$opamp, InternalOutput>>
-            {
-                type ID = u8;
-                fn channel() -> u8 { $chan }
-            }
+            adc_channel_helper!($adc, $chan, opamp::Follower<$opamp, A, InternalOutput>, A);
+            adc_channel_helper!($adc, $chan, opamp::OpenLoop<$opamp, A, B, InternalOutput>, A, B);
+            adc_channel_helper!($adc, $chan, opamp::Pga<$opamp, A, InternalOutput>, A);
+            adc_channel_helper!($adc, $chan, opamp::Locked<$opamp, InternalOutput>,);
         )+
     };
 }
@@ -1909,7 +1913,7 @@ macro_rules! adc {
                 ///     to sample for at a given ADC clock frequency
                 pub fn configure_channel<CHANNEL>(&mut self, _channel: &CHANNEL, sequence: config::Sequence, sample_time: config::SampleTime)
                 where
-                    CHANNEL: Channel<stm32::$adc_type, ID=u8>
+                    CHANNEL: Channel<Ad<stm32::$adc_type>, ID=u8>
                 {
 
                     //Check the sequence is long enough
@@ -1975,7 +1979,7 @@ macro_rules! adc {
                 /// Note that it reconfigures the adc sequence and doesn't restore it
                 pub fn convert<PIN>(&mut self, pin: &PIN, sample_time: config::SampleTime) -> u16
                 where
-                    PIN: Channel<stm32::$adc_type, ID=u8>
+                    PIN: Channel<Ad<stm32::$adc_type>, ID=u8>
                 {
                     let saved_config = self.config;
                     unsafe {
@@ -2421,7 +2425,7 @@ macro_rules! adc {
                 #[inline(always)]
                 pub fn configure_channel<CHANNEL>(&mut self, channel: &CHANNEL, sequence: config::Sequence, sample_time: config::SampleTime)
                 where
-                    CHANNEL: Channel<stm32::$adc_type, ID=u8>
+                    CHANNEL: Channel<Ad<stm32::$adc_type>, ID=u8>
                 {
                     self.adc.configure_channel(channel, sequence, sample_time)
                 }
@@ -2431,7 +2435,7 @@ macro_rules! adc {
                 #[inline(always)]
                 pub fn convert<PIN>(&mut self, pin: &PIN, sample_time: config::SampleTime) -> u16
                 where
-                    PIN: Channel<stm32::$adc_type, ID=u8>
+                    PIN: Channel<Ad<stm32::$adc_type>, ID=u8>
                 {
                     self.adc.convert(pin, sample_time)
                 }
@@ -2474,7 +2478,7 @@ macro_rules! adc {
                 #[inline(always)]
                 pub fn convert<PIN>(&mut self, pin: &PIN, sample_time: config::SampleTime) -> u16
                 where
-                    PIN: Channel<stm32::$adc_type, ID=u8>
+                    PIN: Channel<Ad<stm32::$adc_type>, ID=u8>
                 {
                     self.adc.reset_sequence();
                     self.adc.configure_channel(pin, config::Sequence::One, sample_time);
@@ -2615,9 +2619,9 @@ macro_rules! adc {
                 const REQUEST_LINE: Option<u8> = Some($mux as u8);
             }
 
-            impl<PIN> OneShot<stm32::$adc_type, u16, PIN> for Adc<stm32::$adc_type, Disabled>
+            impl<PIN> OneShot<Ad<stm32::$adc_type>, u16, PIN> for Adc<stm32::$adc_type, Disabled>
             where
-                PIN: Channel<stm32::$adc_type, ID=u8>,
+                PIN: Channel<Ad<stm32::$adc_type>, ID=u8>,
             {
                 type Error = ();
 
