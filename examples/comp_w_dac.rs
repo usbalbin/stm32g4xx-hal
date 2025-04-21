@@ -6,8 +6,8 @@
 mod utils;
 extern crate cortex_m_rt as rt;
 
-use rt::entry;
 use proto_hal::stasis::Freeze;
+use rt::entry;
 
 #[entry]
 fn main() -> ! {
