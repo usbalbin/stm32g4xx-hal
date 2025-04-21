@@ -35,6 +35,7 @@ pub extern crate stm32g4;
 pub use embedded_hal as hal;
 pub use embedded_hal_old as hal_02;
 pub use nb::block;
+pub use proto_hal::stasis;
 
 mod sealed {
     pub trait Sealed {}
