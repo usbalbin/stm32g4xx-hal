@@ -35,8 +35,8 @@ use crate::gpio::gpioc::{PC0, PC1};
 use crate::gpio::gpioe::{PE7, PE8};
 use crate::gpio::gpiof::PF1;
 use crate::rcc::{Clocks, Rcc};
-use crate::stm32::{COMP, EXTI};
 use crate::stasis;
+use crate::stm32::{COMP, EXTI};
 
 /// Enabled Comparator (type state)
 pub struct Enabled;

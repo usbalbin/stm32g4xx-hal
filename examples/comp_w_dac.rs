@@ -15,8 +15,8 @@ fn main() -> ! {
     use hal::delay::SYSTDelayExt;
     use hal::gpio::GpioExt;
     use hal::rcc::RccExt;
-    use hal::stm32;
     use hal::stasis::Freeze;
+    use hal::stm32;
     use stm32g4xx_hal as hal;
 
     let dp = stm32::Peripherals::take().expect("cannot take peripherals");

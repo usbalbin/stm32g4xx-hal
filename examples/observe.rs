@@ -8,6 +8,7 @@ use utils::logger::info;
 extern crate cortex_m_rt as rt;
 
 use fugit::ExtU32 as _;
+use hal::stasis::Freeze;
 use hal::{
     adc::AdcClaim as _,
     comparator::{ComparatorExt, ComparatorSplit, Config},
@@ -16,7 +17,6 @@ use hal::{
     rcc::RccExt,
     stm32,
 };
-use hal::stasis::Freeze;
 use rt::entry;
 use stm32g4xx_hal::{self as hal, adc::config::SampleTime, delay::DelayExt as _};
 

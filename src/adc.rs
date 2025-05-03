@@ -9,6 +9,7 @@
 */
 
 //use crate::dma::traits::PeriAddress;
+use crate::stasis;
 pub use crate::time::U32Ext as _;
 use crate::{
     dma::{mux::DmaMuxResources, traits::TargetAddress, PeripheralToMemory},
@@ -22,7 +23,6 @@ use core::fmt;
 use core::marker::PhantomData;
 use embedded_hal::delay::DelayNs;
 use embedded_hal_old::adc::{Channel, OneShot};
-use crate::stasis;
 
 use self::config::ExternalTrigger12;
 
