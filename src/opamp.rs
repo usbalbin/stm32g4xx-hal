@@ -60,7 +60,7 @@
 // TODO: Add support for calibration
 
 use core::marker::PhantomData;
-use proto_hal::stasis;
+use crate::stasis;
 
 /// PGA Gain
 pub enum Gain {

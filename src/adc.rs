@@ -22,7 +22,7 @@ use core::fmt;
 use core::marker::PhantomData;
 use embedded_hal::delay::DelayNs;
 use embedded_hal_old::adc::{Channel, OneShot};
-use proto_hal::stasis;
+use crate::stasis;
 
 use self::config::ExternalTrigger12;
 

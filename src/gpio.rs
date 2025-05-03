@@ -442,7 +442,7 @@ macro_rules! gpio {
                     }
                 }
 
-                impl<MODE> proto_hal::stasis::Freeze for $PXi<MODE> { }
+                impl<MODE> crate::stasis::Freeze for $PXi<MODE> { }
 
                 impl<MODE> $PXi<MODE> {
                     /// Configures the pin to operate as a floating input pin

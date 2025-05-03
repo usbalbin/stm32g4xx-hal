@@ -16,7 +16,7 @@ use hal::{
     rcc::RccExt,
     stm32,
 };
-use proto_hal::stasis::Freeze;
+use hal::stasis::Freeze;
 use rt::entry;
 use stm32g4xx_hal::{self as hal, adc::config::SampleTime, delay::DelayExt as _};
 

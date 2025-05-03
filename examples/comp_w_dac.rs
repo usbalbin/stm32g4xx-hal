@@ -6,7 +6,6 @@
 mod utils;
 extern crate cortex_m_rt as rt;
 
-use proto_hal::stasis::Freeze;
 use rt::entry;
 
 #[entry]
@@ -17,6 +16,7 @@ fn main() -> ! {
     use hal::gpio::GpioExt;
     use hal::rcc::RccExt;
     use hal::stm32;
+    use hal::stasis::Freeze;
     use stm32g4xx_hal as hal;
 
     let dp = stm32::Peripherals::take().expect("cannot take peripherals");

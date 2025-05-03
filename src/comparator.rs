@@ -36,7 +36,7 @@ use crate::gpio::gpioe::{PE7, PE8};
 use crate::gpio::gpiof::PF1;
 use crate::rcc::{Clocks, Rcc};
 use crate::stm32::{COMP, EXTI};
-use proto_hal::stasis;
+use crate::stasis;
 
 /// Enabled Comparator (type state)
 pub struct Enabled;
@@ -265,7 +265,7 @@ pub mod refint_input {
                 const USE_RESISTOR_DIVIDER: bool = $use_r_div;
             }
 
-            impl proto_hal::stasis::Freeze for $t {}
+            impl crate::stasis::Freeze for $t {}
         };
     }
 
