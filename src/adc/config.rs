@@ -137,6 +137,45 @@ impl From<SampleTime> for u8 {
     }
 }
 
+pub struct ClockConfig {
+    pub(crate) mode: ClockMode,
+    pub(crate) src: ClockSource,
+    pub(crate) clock: Clock,
+}
+
+impl ClockConfig {
+    /// change the clock_mode field
+    #[inline(always)]
+    pub fn clock_mode(mut self, clock_mode: ClockMode) -> Self {
+        self.mode = clock_mode;
+        self
+    }
+    /// change the clock field
+    #[inline(always)]
+    pub fn clock(mut self, clock: Clock) -> Self {
+        self.clock = clock;
+        self
+    }
+}
+
+/// ADC Clock Source selection
+#[derive(Debug, Clone, Copy)]
+pub enum ClockSource {
+    /// Use the System Clock as Clock Source
+    SystemClock,
+    /// use the Internal PLL as Clock Source
+    PLL_P,
+}
+
+impl From<ClockSource> for u8 {
+    fn from(c: ClockSource) -> u8 {
+        match c {
+            ClockSource::PLL_P => 0b01,
+            ClockSource::SystemClock => 0b10,
+        }
+    }
+}
+
 /// ClockMode config for the ADC
 /// Check the datasheet for the maximum speed the ADC supports
 #[derive(Debug, Clone, Copy)]
@@ -771,8 +810,6 @@ impl DifferentialSelection {
 /// added here when needed but this covers several basic usecases.
 #[derive(Debug, Clone, Copy)]
 pub struct AdcConfig<ET> {
-    pub(crate) clock_mode: ClockMode,
-    pub(crate) clock: Clock,
     pub(crate) resolution: Resolution,
     pub(crate) align: Align,
     pub(crate) external_trigger: (TriggerMode, ET),
@@ -790,18 +827,6 @@ pub struct AdcConfig<ET> {
 }
 
 impl<ET: Copy> AdcConfig<ET> {
-    /// change the clock_mode field
-    #[inline(always)]
-    pub fn clock_mode(mut self, clock_mode: ClockMode) -> Self {
-        self.clock_mode = clock_mode;
-        self
-    }
-    /// change the clock field
-    #[inline(always)]
-    pub fn clock(mut self, clock: Clock) -> Self {
-        self.clock = clock;
-        self
-    }
     /// change the resolution field
     #[inline(always)]
     pub fn resolution(mut self, resolution: Resolution) -> Self {
@@ -918,8 +943,6 @@ impl AdcConfig<ExternalTrigger345> {
 impl<ET: Default> Default for AdcConfig<ET> {
     fn default() -> Self {
         Self {
-            clock_mode: ClockMode::Synchronous_Div_1,
-            clock: Clock::Div_2,
             resolution: Resolution::Twelve,
             align: Align::Right,
             external_trigger: (TriggerMode::Disabled, ET::default()),

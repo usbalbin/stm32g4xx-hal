@@ -12,37 +12,91 @@ pub mod config;
 mod g4;
 pub mod temperature;
 
+use crate::rcc::Clocks;
 //use crate::dma::traits::PeriAddress;
+use crate::rcc::Enable;
+use crate::rcc::Reset;
 pub use crate::time::U32Ext as _;
 use crate::{
     dma::{mux::DmaMuxResources, traits::TargetAddress, PeripheralToMemory},
-    opamp::{self, InternalOutput},
-    rcc::{Enable, Rcc, Reset},
-    signature::{VtempCal130, VtempCal30, VDDA_CALIB},
+    rcc::Rcc,
+    signature::VDDA_CALIB,
     stm32,
 };
 use crate::{rcc, stasis};
+use config::ClockConfig;
+use config::ClockSource;
 use core::marker::PhantomData;
 use core::{fmt, ops::Deref};
 use embedded_hal::delay::DelayNs;
 use embedded_hal_old::adc::{Channel, OneShot};
+use stm32g4::stm32g473::rcc::ccipr;
 
-trait AdcCommon: Deref<Target = stm32::adc12_common::RegisterBlock> {
+trait AdcCommon:
+    Deref<Target = stm32::adc12_common::RegisterBlock> + Sized + rcc::Enable + rcc::Reset
+{
     const PTR: *const stm32::adc12_common::RegisterBlock;
+
+    fn claim(self, cfg: ClockConfig, rcc: &mut Rcc) -> Foo<Self>;
+}
+
+fn init_adc_common<ADCC: AdcCommon>(
+    adc_common: ADCC,
+    rcc: &mut rcc::Rcc,
+    cfg: config::ClockConfig,
+    adcsel: impl FnOnce(
+        &mut stm32g4::raw::W<stm32::rcc::ccipr::CCIPRrs>,
+    ) -> stm32::rcc::ccipr::ADC12SEL_W<stm32::rcc::ccipr::CCIPRrs>,
+) -> Foo<ADCC> {
+    unsafe {
+        let rcc_ptr = &(*stm32::RCC::ptr());
+        ADCC::enable(rcc_ptr);
+        ADCC::reset(rcc_ptr);
+    }
+    // Select system clock as ADC clock source
+    rcc.rb
+        .ccipr()
+        .modify(|_, w: &mut stm32g4::raw::W<ccipr::CCIPRrs>| {
+            // This is sound, as `0b10` is a valid value for this field.
+            unsafe {
+                adcsel(w).bits(cfg.src.into());
+            }
+
+            w
+        });
+
+    adc_common
+        .ccr()
+        .modify(|_, w| unsafe { w.ckmode().bits(cfg.mode.into()) });
+    adc_common
+        .ccr()
+        .modify(|_, w| unsafe { w.presc().bits(cfg.clock.into()) });
+
+    Foo { reg: adc_common }
 }
 
 impl AdcCommon for stm32::ADC12_COMMON {
     const PTR: *const stm32::adc12_common::RegisterBlock = Self::ptr();
+
+    fn claim(self, cfg: ClockConfig, rcc: &mut Rcc) -> Foo<Self> {
+        init_adc_common(self, rcc, cfg, |w| w.adc12sel())
+    }
 }
 
 impl AdcCommon for stm32::ADC345_COMMON {
     const PTR: *const stm32::adc12_common::RegisterBlock = Self::ptr();
+
+    fn claim(self, cfg: ClockConfig, rcc: &mut Rcc) -> Foo<Self> {
+        init_adc_common(self, rcc, cfg, |w| w.adc345sel())
+    }
+}
+
+struct Foo<ADCC> {
+    reg: ADCC,
 }
 
 /// Marker trait for all ADC peripherals
-pub trait Instance:
-    crate::Sealed + Deref<Target = stm32::adc1::RegisterBlock> + rcc::Enable + rcc::Reset
-{
+pub trait Instance: crate::Sealed + Deref<Target = stm32::adc1::RegisterBlock> {
     /// Specifies adc common register block for configuration common to this and other ADC in the same group
     type Common: AdcCommon;
 
@@ -409,75 +463,18 @@ where
     }
 }
 
-/// ADC Clock Source selection
-#[derive(Debug, Clone, Copy)]
-pub enum ClockSource {
-    /// Use the System Clock as Clock Source
-    SystemClock,
-    /// use the Internal PLL as Clock Source
-    PLL_P,
-}
-
-impl From<ClockSource> for u8 {
-    fn from(c: ClockSource) -> u8 {
-        match c {
-            ClockSource::PLL_P => 0b01,
-            ClockSource::SystemClock => 0b10,
-        }
-    }
-}
-
 /// used to create an ADC instance from the stm32::Adc
-pub trait AdcClaim<TYPE: Instance> {
+pub trait AdcClaim<ADC: Instance> {
     /// create a disabled ADC instance from the stm32::Adc
-    fn claim(
-        self,
-        cs: ClockSource,
-        rcc: &Rcc,
-        delay: &mut impl DelayNs,
-        reset: bool,
-    ) -> Adc<TYPE, Disabled>;
+    fn claim(&self, adc: ADC, delay: &mut impl DelayNs) -> Adc<ADC, Disabled>;
 
     /// create an enabled ADC instance from the stm32::Adc
     fn claim_and_configure(
-        self,
-        cs: ClockSource,
-        rcc: &Rcc,
-        config: config::AdcConfig<TYPE::ExternalTrigger>,
+        &self,
+        adc: ADC,
+        config: config::AdcConfig<ADC::ExternalTrigger>,
         delay: &mut impl DelayNs,
-        reset: bool,
-    ) -> Adc<TYPE, Configured>;
-}
-
-trait AdcConfig {
-    fn configure_clock_source(cs: ClockSource, rcc: &Rcc);
-}
-
-#[inline(always)]
-fn configure_clock_source12(cs: ClockSource, rcc: &Rcc) {
-    // Select system clock as ADC clock source
-    rcc.rb.ccipr().modify(|_, w| {
-        // This is sound, as `0b10` is a valid value for this field.
-        unsafe {
-            w.adc12sel().bits(cs.into());
-        }
-
-        w
-    });
-}
-
-#[inline(always)]
-#[allow(dead_code)]
-fn configure_clock_source345(cs: ClockSource, rcc: &Rcc) {
-    // Select system clock as ADC clock source
-    rcc.rb.ccipr().modify(|_, w| {
-        // This is sound, as `0b10` is a valid value for this field.
-        unsafe {
-            w.adc345sel().bits(cs.into());
-        }
-
-        w
-    });
+    ) -> Adc<ADC, Configured>;
 }
 
 impl<ADC: Instance> DynamicAdc<ADC> {
@@ -593,8 +590,6 @@ impl<ADC: Instance> DynamicAdc<ADC> {
     /// Applies all fields in AdcConfig
     #[inline(always)]
     fn apply_config(&mut self, config: config::AdcConfig<ADC::ExternalTrigger>) {
-        self.set_clock_mode(config.clock_mode);
-        self.set_clock(config.clock);
         self.set_resolution(config.resolution);
         self.set_align(config.align);
         self.set_external_trigger(config.external_trigger);
@@ -609,28 +604,6 @@ impl<ADC: Instance> DynamicAdc<ADC> {
 
         if let Some(vdda) = config.vdda {
             self.calibrated_vdda = vdda;
-        }
-    }
-
-    /// Sets the clock_mode for the adc
-    #[inline(always)]
-    pub fn set_clock_mode(&mut self, clock_mode: config::ClockMode) {
-        self.config.clock_mode = clock_mode;
-        unsafe {
-            let common = &(*ADC::Common::PTR);
-            common
-                .ccr()
-                .modify(|_, w| w.ckmode().bits(clock_mode.into()));
-        }
-    }
-
-    /// Sets the clock for the adc
-    #[inline(always)]
-    pub fn set_clock(&mut self, clock: config::Clock) {
-        self.config.clock = clock;
-        unsafe {
-            let common = &(*ADC::Common::PTR);
-            common.ccr().modify(|_, w| w.presc().bits(clock.into()));
         }
     }
 
@@ -1033,60 +1006,6 @@ impl<ADC: Instance> DynamicAdc<ADC> {
         self.adc_reg.cr().read().adstart().bit_is_set()
     }
 
-    /// Enables the vbat internal channel
-    #[inline(always)]
-    pub fn enable_vbat(&self, common: &ADC::Common) {
-        common.ccr().modify(|_, w| w.vbatsel().set_bit());
-    }
-
-    /// Enables the vbat internal channel
-    #[inline(always)]
-    pub fn disable_vbat(&self, common: &ADC::Common) {
-        common.ccr().modify(|_, w| w.vbatsel().clear_bit());
-    }
-
-    /// Returns if the vbat internal channel is enabled
-    #[inline(always)]
-    pub fn is_vbat_enabled(&mut self, common: &ADC::Common) -> bool {
-        common.ccr().read().vbatsel().bit_is_set()
-    }
-
-    /// Enables the temp internal channel.
-    #[inline(always)]
-    pub fn enable_temperature(&mut self, common: &ADC::Common) {
-        common.ccr().modify(|_, w| w.vsensesel().set_bit());
-    }
-
-    /// Disables the temp internal channel
-    #[inline(always)]
-    pub fn disable_temperature(&mut self, common: &ADC::Common) {
-        common.ccr().modify(|_, w| w.vsensesel().clear_bit());
-    }
-
-    /// Returns if the temp internal channel is enabled
-    #[inline(always)]
-    pub fn is_temperature_enabled(&mut self, common: &ADC::Common) -> bool {
-        common.ccr().read().vsensesel().bit_is_set()
-    }
-
-    /// Enables the vref internal channel.
-    #[inline(always)]
-    pub fn enable_vref(&mut self, common: &ADC::Common) {
-        common.ccr().modify(|_, w| w.vrefen().set_bit());
-    }
-
-    /// Disables the vref internal channel
-    #[inline(always)]
-    pub fn disable_vref(&mut self, common: &ADC::Common) {
-        common.ccr().modify(|_, w| w.vrefen().clear_bit());
-    }
-
-    /// Returns if the vref internal channel is enabled
-    #[inline(always)]
-    pub fn is_vref_enabled(&mut self, common: &ADC::Common) -> bool {
-        common.ccr().read().vrefen().bit_is_set()
-    }
-
     /// Read overrun flag
     #[inline(always)]
     pub fn get_overrun_flag(&self) -> bool {
@@ -1104,32 +1023,17 @@ impl<ADC: Instance> DynamicAdc<ADC> {
 //Ideally we should make this a function of the common group and claim all adc in that group at once.
 //The situation now is that the clock source setting can change between claims, changing the existing
 //setting of the allready claimed ADC.
-impl<ADC: Instance> AdcClaim<ADC> for ADC {
+impl<ADC: Instance> AdcClaim<ADC> for Foo<ADC::Common> {
     /// Enables the ADC clock, resets the peripheral (optionally), runs calibration and applies the supplied config
     /// # Arguments
     /// * `reset` - should a reset be performed. This is provided because on some devices multiple ADCs share the same common reset
     ///
     /// TODO: fix needing SYST
     #[inline(always)]
-    fn claim(
-        self,
-        cs: ClockSource,
-        rcc: &Rcc,
-        delay: &mut impl DelayNs,
-        reset: bool,
-    ) -> Adc<ADC, Disabled> {
-        unsafe {
-            let rcc_ptr = &(*stm32::RCC::ptr());
-            ADC::enable(rcc_ptr);
-            if reset {
-                ADC::reset(rcc_ptr);
-            }
-        }
-        //Self::configure_clock_source(cs, rcc); <--- TODO
-
+    fn claim(&self, adc: ADC, delay: &mut impl DelayNs) -> Adc<ADC, Disabled> {
         let dynadc = DynamicAdc {
             config: config::AdcConfig::default(),
-            adc_reg: self,
+            adc_reg: adc,
             calibrated_vdda: VDDA_CALIB,
         };
 
@@ -1144,14 +1048,12 @@ impl<ADC: Instance> AdcClaim<ADC> for ADC {
     /// claims and configures the Adc
     #[inline(always)]
     fn claim_and_configure(
-        self,
-        cs: ClockSource,
-        rcc: &Rcc,
+        &self,
+        adc: ADC,
         config: config::AdcConfig<ADC::ExternalTrigger>,
         delay: &mut impl DelayNs,
-        reset: bool,
     ) -> Adc<ADC, Configured> {
-        let mut adc = self.claim(cs, rcc, delay, reset);
+        let mut adc = self.claim(adc, delay);
         adc.adc.config = config;
 
         // If the user specified a VDDA, use that over the internally determined value.
@@ -1160,6 +1062,62 @@ impl<ADC: Instance> AdcClaim<ADC> for ADC {
         }
 
         adc.enable()
+    }
+}
+
+impl<ADCC: AdcCommon> Foo<ADCC> {
+    /// Enables the vbat internal channel
+    #[inline(always)]
+    pub fn enable_vbat(&mut self) {
+        self.reg.ccr().modify(|_, w| w.vbatsel().set_bit());
+    }
+
+    /// Enables the vbat internal channel
+    #[inline(always)]
+    pub fn disable_vbat(&mut self) {
+        self.reg.ccr().modify(|_, w| w.vbatsel().clear_bit());
+    }
+
+    /// Returns if the vbat internal channel is enabled
+    #[inline(always)]
+    pub fn is_vbat_enabled(&mut self) -> bool {
+        self.reg.ccr().read().vbatsel().bit_is_set()
+    }
+
+    /// Enables the temp internal channel.
+    #[inline(always)]
+    pub fn enable_temperature(&mut self) {
+        self.reg.ccr().modify(|_, w| w.vsensesel().set_bit());
+    }
+
+    /// Disables the temp internal channel
+    #[inline(always)]
+    pub fn disable_temperature(&mut self) {
+        self.reg.ccr().modify(|_, w| w.vsensesel().clear_bit());
+    }
+
+    /// Returns if the temp internal channel is enabled
+    #[inline(always)]
+    pub fn is_temperature_enabled(&mut self) -> bool {
+        self.reg.ccr().read().vsensesel().bit_is_set()
+    }
+
+    /// Enables the vref internal channel.
+    #[inline(always)]
+    pub fn enable_vref(&mut self) {
+        self.reg.ccr().modify(|_, w| w.vrefen().set_bit());
+    }
+
+    /// Disables the vref internal channel
+    #[inline(always)]
+    pub fn disable_vref(&mut self) {
+        self.reg.ccr().modify(|_, w| w.vrefen().clear_bit());
+    }
+
+    /// Returns if the vref internal channel is enabled
+    #[inline(always)]
+    pub fn is_vref_enabled(&mut self) -> bool {
+        self.reg.ccr().read().vrefen().bit_is_set()
     }
 }
 
@@ -1292,18 +1250,6 @@ impl<ADC: Instance> Adc<ADC, Disabled> {
             adc: self.adc,
             _status: PhantomData,
         }
-    }
-
-    /// Sets the clock_mode for the adc
-    #[inline(always)]
-    pub fn set_clock_mode(&mut self, clock_mode: config::ClockMode) {
-        self.adc.set_clock_mode(clock_mode)
-    }
-
-    /// Sets the clock for the adc
-    #[inline(always)]
-    pub fn set_clock(&mut self, clock: config::Clock) {
-        self.adc.set_clock(clock)
     }
 
     /// Sets the oversampling
