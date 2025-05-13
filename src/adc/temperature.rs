@@ -2,6 +2,11 @@ use crate::signature::{VtempCal130, VtempCal30, VDDA_CALIB};
 
 use super::config;
 
+/*
+    Currently unused but this is the formula for using temperature calibration:
+    Temperature in °C = ( ( (TS_CAL2_TEMP-TS_CAL1_TEMP) / (TS_CAL2-TS_CAL1) ) * (TS_DATA-TS_CAL1) ) + 30°C
+*/
+
 /// Core temperature internal signal
 pub struct Temperature;
 impl crate::stasis::Freeze for Temperature {}

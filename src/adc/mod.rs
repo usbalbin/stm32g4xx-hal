@@ -3,19 +3,15 @@
 
 #![deny(missing_docs)]
 
-/*
-    Currently unused but this is the formula for using temperature calibration:
-    Temperature in °C = ( ( (TS_CAL2_TEMP-TS_CAL1_TEMP) / (TS_CAL2-TS_CAL1) ) * (TS_DATA-TS_CAL1) ) + 30°C
-*/
-
-pub mod config;
 mod g4;
+
+/// Holds config related types for setting up the ADC's
+pub mod config;
+
+/// Temperature related types used for reading the device's internal temperature
 pub mod temperature;
 
-use crate::rcc::Clocks;
-//use crate::dma::traits::PeriAddress;
-use crate::rcc::Enable;
-use crate::rcc::Reset;
+use crate::stm32::rcc::ccipr;
 pub use crate::time::U32Ext as _;
 use crate::{
     dma::{mux::DmaMuxResources, traits::TargetAddress, PeripheralToMemory},
@@ -24,42 +20,48 @@ use crate::{
     stm32,
 };
 use crate::{rcc, stasis};
-use config::ClockConfig;
-use config::ClockSource;
 use core::marker::PhantomData;
 use core::{fmt, ops::Deref};
 use embedded_hal::delay::DelayNs;
 use embedded_hal_old::adc::{Channel, OneShot};
-use stm32g4::stm32g473::rcc::ccipr;
 
-trait AdcCommon:
+/// Extension trait for `ADC12_COMMON` and `ADC345_COMMON`
+///
+/// These types hold some configuration which is common to all
+/// ADCs in that group such as clock configuration.
+pub trait AdcCommonExt:
     Deref<Target = stm32::adc12_common::RegisterBlock> + Sized + rcc::Enable + rcc::Reset
 {
+    /// Pointer to the underlaying register block
     const PTR: *const stm32::adc12_common::RegisterBlock;
 
-    fn claim(self, cfg: ClockConfig, rcc: &mut Rcc) -> Foo<Self>;
+    /// Setup and initialize the adc group
+    fn claim(self, cfg: config::ClockMode, rcc: &mut Rcc) -> AdcCommon<Self>;
 }
 
-fn init_adc_common<ADCC: AdcCommon>(
+fn init_adc_common<ADCC: AdcCommonExt>(
     adc_common: ADCC,
     rcc: &mut rcc::Rcc,
-    cfg: config::ClockConfig,
+    cfg: config::ClockMode,
     adcsel: impl FnOnce(
         &mut stm32g4::raw::W<stm32::rcc::ccipr::CCIPRrs>,
     ) -> stm32::rcc::ccipr::ADC12SEL_W<stm32::rcc::ccipr::CCIPRrs>,
-) -> Foo<ADCC> {
+) -> AdcCommon<ADCC> {
+    let cfg = cfg.to_bits(rcc);
+
     unsafe {
         let rcc_ptr = &(*stm32::RCC::ptr());
         ADCC::enable(rcc_ptr);
         ADCC::reset(rcc_ptr);
     }
+
     // Select system clock as ADC clock source
     rcc.rb
         .ccipr()
         .modify(|_, w: &mut stm32g4::raw::W<ccipr::CCIPRrs>| {
             // This is sound, as `0b10` is a valid value for this field.
             unsafe {
-                adcsel(w).bits(cfg.src.into());
+                adcsel(w).bits(cfg.adcsel);
             }
 
             w
@@ -67,38 +69,41 @@ fn init_adc_common<ADCC: AdcCommon>(
 
     adc_common
         .ccr()
-        .modify(|_, w| unsafe { w.ckmode().bits(cfg.mode.into()) });
+        .modify(|_, w| unsafe { w.ckmode().bits(cfg.ckmode) });
     adc_common
         .ccr()
-        .modify(|_, w| unsafe { w.presc().bits(cfg.clock.into()) });
+        .modify(|_, w| unsafe { w.presc().bits(cfg.presc) });
 
-    Foo { reg: adc_common }
+    AdcCommon { reg: adc_common }
 }
 
-impl AdcCommon for stm32::ADC12_COMMON {
+impl AdcCommonExt for stm32::ADC12_COMMON {
     const PTR: *const stm32::adc12_common::RegisterBlock = Self::ptr();
 
-    fn claim(self, cfg: ClockConfig, rcc: &mut Rcc) -> Foo<Self> {
+    fn claim(self, cfg: config::ClockMode, rcc: &mut Rcc) -> AdcCommon<Self> {
         init_adc_common(self, rcc, cfg, |w| w.adc12sel())
     }
 }
 
-impl AdcCommon for stm32::ADC345_COMMON {
+impl AdcCommonExt for stm32::ADC345_COMMON {
     const PTR: *const stm32::adc12_common::RegisterBlock = Self::ptr();
 
-    fn claim(self, cfg: ClockConfig, rcc: &mut Rcc) -> Foo<Self> {
+    fn claim(self, cfg: config::ClockMode, rcc: &mut Rcc) -> AdcCommon<Self> {
         init_adc_common(self, rcc, cfg, |w| w.adc345sel())
     }
 }
 
-struct Foo<ADCC> {
+/// Type for initialized `ADC12_COMMON` or `ADC345_COMMON`
+///
+/// See [`AdcCommon::claim`]
+pub struct AdcCommon<ADCC> {
     reg: ADCC,
 }
 
 /// Marker trait for all ADC peripherals
 pub trait Instance: crate::Sealed + Deref<Target = stm32::adc1::RegisterBlock> {
     /// Specifies adc common register block for configuration common to this and other ADC in the same group
-    type Common: AdcCommon;
+    type Common: AdcCommonExt;
 
     /// Specifies what External trigger type the ADC uses
     type ExternalTrigger: fmt::Debug + Default + Copy + Into<u8>;
@@ -112,7 +117,6 @@ impl Instance for stm32::ADC1 {
     type ExternalTrigger = config::ExternalTrigger12;
     const DMA_MUX_RESOURCE: DmaMuxResources = DmaMuxResources::ADC1;
 }
-#[cfg(feature = "adc2")]
 impl Instance for stm32::ADC2 {
     type Common = stm32::ADC12_COMMON;
     type ExternalTrigger = config::ExternalTrigger12;
@@ -1019,14 +1023,9 @@ impl<ADC: Instance> DynamicAdc<ADC> {
     }
 }
 
-//TODO: claim now configures the clock for all ADCs in the group (12 and 345).
-//Ideally we should make this a function of the common group and claim all adc in that group at once.
-//The situation now is that the clock source setting can change between claims, changing the existing
-//setting of the allready claimed ADC.
-impl<ADC: Instance> AdcClaim<ADC> for Foo<ADC::Common> {
-    /// Enables the ADC clock, resets the peripheral (optionally), runs calibration and applies the supplied config
+impl<ADC: Instance> AdcClaim<ADC> for AdcCommon<ADC::Common> {
+    /// Runs calibration and applies the supplied config
     /// # Arguments
-    /// * `reset` - should a reset be performed. This is provided because on some devices multiple ADCs share the same common reset
     ///
     /// TODO: fix needing SYST
     #[inline(always)]
@@ -1065,7 +1064,7 @@ impl<ADC: Instance> AdcClaim<ADC> for Foo<ADC::Common> {
     }
 }
 
-impl<ADCC: AdcCommon> Foo<ADCC> {
+impl<ADCC: AdcCommonExt> AdcCommon<ADCC> {
     /// Enables the vbat internal channel
     #[inline(always)]
     pub fn enable_vbat(&mut self) {
@@ -1448,9 +1447,9 @@ impl<ADC: Instance> Conversion<ADC> {
     where
         F: FnMut(u16, &Adc<ADC, Active>),
     {
-        let adc = loop {
+        loop {
             match self {
-                Conversion::Stopped(adc) => break adc,
+                Conversion::Stopped(adc) => return adc,
                 Conversion::Active(adc) => {
                     self = adc.wait_for_conversion_sequence();
                     if let Conversion::Active(adc) = self {
@@ -1461,8 +1460,7 @@ impl<ADC: Instance> Conversion<ADC> {
                     }
                 }
             }
-        };
-        adc
+        }
     }
 }
 

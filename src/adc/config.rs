@@ -1,5 +1,8 @@
 /// Contains types related to ADC configuration
 use embedded_hal_old::adc::Channel;
+use fugit::HertzU32;
+
+use crate::rcc;
 
 /// The place in the sequence a given channel should be captured
 #[derive(Debug, PartialEq, PartialOrd, Copy, Clone)]
@@ -86,6 +89,7 @@ impl From<u8> for Sequence {
 }
 
 /// The number of cycles to sample a given channel for
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum SampleTime {
     /// 2.5 cycles
@@ -137,40 +141,21 @@ impl From<SampleTime> for u8 {
     }
 }
 
-pub struct ClockConfig {
-    pub(crate) mode: ClockMode,
-    pub(crate) src: ClockSource,
-    pub(crate) clock: Clock,
-}
-
-impl ClockConfig {
-    /// change the clock_mode field
-    #[inline(always)]
-    pub fn clock_mode(mut self, clock_mode: ClockMode) -> Self {
-        self.mode = clock_mode;
-        self
-    }
-    /// change the clock field
-    #[inline(always)]
-    pub fn clock(mut self, clock: Clock) -> Self {
-        self.clock = clock;
-        self
-    }
-}
-
 /// ADC Clock Source selection
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone, Default)]
 pub enum ClockSource {
     /// Use the System Clock as Clock Source
+    #[default]
     SystemClock,
     /// use the Internal PLL as Clock Source
-    PLL_P,
+    PllP,
 }
 
 impl From<ClockSource> for u8 {
     fn from(c: ClockSource) -> u8 {
         match c {
-            ClockSource::PLL_P => 0b01,
+            ClockSource::PllP => 0b01,
             ClockSource::SystemClock => 0b10,
         }
     }
@@ -178,47 +163,133 @@ impl From<ClockSource> for u8 {
 
 /// ClockMode config for the ADC
 /// Check the datasheet for the maximum speed the ADC supports
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum ClockMode {
     /// (Asynchronous clock mode), adc_ker_ck. generated at product level (refer to Section 6: Reset and clock control (RCC)
-    Asynchronous,
+    AdcKerCk {
+        /// Clock prescaler
+        ///
+        /// The final clock frequency will be `f_src / prescaler`
+        prescaler: Prescaler,
+
+        /// Clock source for the ADC
+        ///
+        /// The final clock frequency will be `f_src / clock`
+        src: ClockSource,
+    },
     /// (Synchronous clock mode). adc_hclk/1
     /// This configuration must be enabled only if the AHB clock prescaler is set to 1 (HPRE\[3:0\] = 0xxx in RCC_CFGR register) and if the system clock has a 50% duty cycle.
-    Synchronous_Div_1,
+    AdcHclkDiv1,
     /// Synchronous clock mode. adc_hclk/2
-    Synchronous_Div_2,
+    AdcHclkDiv2,
     /// Synchronous clock mode. adc_hclk/4
-    Synchronous_Div_4,
+    AdcHclkDiv4,
 }
 
-impl From<ClockMode> for u8 {
-    fn from(c: ClockMode) -> u8 {
-        match c {
-            ClockMode::Asynchronous => 0b00,
-            ClockMode::Synchronous_Div_1 => 0b001,
-            ClockMode::Synchronous_Div_2 => 0b010,
-            ClockMode::Synchronous_Div_4 => 0b011,
+impl ClockMode {
+    /// Validate configuration
+    pub fn validate(&self, rcc: &mut crate::rcc::Rcc) -> HertzU32 {
+        fn prescaler_to_factor(p: Prescaler) -> u32 {
+            match p {
+                Prescaler::Div_1 => 1,
+                Prescaler::Div_2 => 2,
+                Prescaler::Div_4 => 4,
+                Prescaler::Div_6 => 6,
+                Prescaler::Div_8 => 8,
+                Prescaler::Div_10 => 10,
+                Prescaler::Div_12 => 12,
+                Prescaler::Div_16 => 16,
+                Prescaler::Div_32 => 32,
+                Prescaler::Div_64 => 64,
+                Prescaler::Div_128 => 128,
+                Prescaler::Div_256 => 256,
+            }
+        }
+
+        let f = match self {
+            ClockMode::AdcKerCk {
+                prescaler: clock,
+                src: ClockSource::PllP,
+            } => {
+                rcc.clocks
+                    .pll_clk
+                    .p
+                    .expect("Pll-P selected as clock source for ADC but is disabled")
+                    .raw()
+                    / prescaler_to_factor(*clock)
+            }
+            ClockMode::AdcKerCk {
+                prescaler: clock,
+                src: ClockSource::SystemClock,
+            } => rcc.clocks.sys_clk.raw() / prescaler_to_factor(*clock),
+
+            //01: adc_hclk/1 (Synchronous clock mode). This configuration must be enabled only if the
+            //AHB clock prescaler is set (HPRE[3:0] = 0xxx in RCC_CFGR register) and if the system
+            //clock has a 50% duty cycle.
+            ClockMode::AdcHclkDiv1 => {
+                assert!(rcc.rb.cfgr().read().hpre().is_div1());
+                rcc.clocks.ahb_clk.raw()
+            }
+            ClockMode::AdcHclkDiv2 => rcc.clocks.ahb_clk.raw() / 2,
+            ClockMode::AdcHclkDiv4 => rcc.clocks.ahb_clk.raw() / 4,
+        };
+
+        HertzU32::Hz(f)
+    }
+
+    pub(crate) fn to_bits(self, rcc: &mut rcc::Rcc) -> ClockBits {
+        assert!(self.validate(rcc) <= HertzU32::MHz(60));
+        match self {
+            ClockMode::AdcKerCk {
+                prescaler: clock,
+                src,
+            } => ClockBits {
+                ckmode: 0b00,
+                presc: clock.into(),
+                adcsel: src.into(),
+            },
+            ClockMode::AdcHclkDiv1 => ClockBits {
+                ckmode: 0b01,
+                presc: 0,
+                adcsel: 0,
+            },
+            ClockMode::AdcHclkDiv2 => ClockBits {
+                ckmode: 0b10,
+                presc: 0,
+                adcsel: 0,
+            },
+            ClockMode::AdcHclkDiv4 => ClockBits {
+                ckmode: 0b11,
+                presc: 0,
+                adcsel: 0,
+            },
         }
     }
 }
 
-impl From<u8> for ClockMode {
-    fn from(b: u8) -> ClockMode {
-        match b {
-            0b000 => ClockMode::Asynchronous,
-            0b001 => ClockMode::Synchronous_Div_1,
-            0b010 => ClockMode::Synchronous_Div_2,
-            0b011 => ClockMode::Synchronous_Div_4,
-            _ => unimplemented!(),
+impl Default for ClockMode {
+    fn default() -> Self {
+        Self::AdcKerCk {
+            prescaler: Default::default(),
+            src: Default::default(),
         }
     }
+}
+
+pub(crate) struct ClockBits {
+    pub(crate) ckmode: u8,
+    pub(crate) presc: u8,
+    pub(crate) adcsel: u8,
 }
 
 /// Clock config for the ADC
 /// Check the datasheet for the maximum speed the ADC supports
-#[derive(Debug, Clone, Copy)]
-pub enum Clock {
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone, Default)]
+pub enum Prescaler {
     /// Clock not divided
+    #[default]
     Div_1,
     /// Clock divided by 2
     Div_2,
@@ -244,47 +315,48 @@ pub enum Clock {
     Div_256,
 }
 
-impl From<Clock> for u8 {
-    fn from(c: Clock) -> u8 {
+impl From<Prescaler> for u8 {
+    fn from(c: Prescaler) -> u8 {
         match c {
-            Clock::Div_1 => 0b000,
-            Clock::Div_2 => 0b001,
-            Clock::Div_4 => 0b010,
-            Clock::Div_6 => 0b011,
-            Clock::Div_8 => 0b100,
-            Clock::Div_10 => 0b101,
-            Clock::Div_12 => 0b110,
-            Clock::Div_16 => 0b111,
-            Clock::Div_32 => 0b1000,
-            Clock::Div_64 => 0b1001,
-            Clock::Div_128 => 0b1010,
-            Clock::Div_256 => 0b1011,
+            Prescaler::Div_1 => 0b000,
+            Prescaler::Div_2 => 0b001,
+            Prescaler::Div_4 => 0b010,
+            Prescaler::Div_6 => 0b011,
+            Prescaler::Div_8 => 0b100,
+            Prescaler::Div_10 => 0b101,
+            Prescaler::Div_12 => 0b110,
+            Prescaler::Div_16 => 0b111,
+            Prescaler::Div_32 => 0b1000,
+            Prescaler::Div_64 => 0b1001,
+            Prescaler::Div_128 => 0b1010,
+            Prescaler::Div_256 => 0b1011,
         }
     }
 }
 
-impl From<u8> for Clock {
-    fn from(b: u8) -> Clock {
+impl From<u8> for Prescaler {
+    fn from(b: u8) -> Prescaler {
         match b {
-            0b000 => Clock::Div_1,
-            0b001 => Clock::Div_2,
-            0b010 => Clock::Div_4,
-            0b011 => Clock::Div_6,
-            0b100 => Clock::Div_8,
-            0b101 => Clock::Div_10,
-            0b110 => Clock::Div_12,
-            0b111 => Clock::Div_16,
-            0b1000 => Clock::Div_32,
-            0b1001 => Clock::Div_64,
-            0b1010 => Clock::Div_128,
-            0b1011 => Clock::Div_256,
+            0b000 => Prescaler::Div_1,
+            0b001 => Prescaler::Div_2,
+            0b010 => Prescaler::Div_4,
+            0b011 => Prescaler::Div_6,
+            0b100 => Prescaler::Div_8,
+            0b101 => Prescaler::Div_10,
+            0b110 => Prescaler::Div_12,
+            0b111 => Prescaler::Div_16,
+            0b1000 => Prescaler::Div_32,
+            0b1001 => Prescaler::Div_64,
+            0b1010 => Prescaler::Div_128,
+            0b1011 => Prescaler::Div_256,
             _ => unimplemented!(),
         }
     }
 }
 
 /// Resolution to sample at
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum Resolution {
     /// 12-bit
     Twelve,
@@ -331,6 +403,7 @@ impl From<u8> for Resolution {
 /// Possible external triggers the ADC can listen to
 ///
 /// This applies to ADC3, ADC4 and ADC5
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone, Copy, Default)]
 pub enum ExternalTrigger12 {
     /// TIM1 compare channel 1
@@ -402,15 +475,8 @@ pub enum ExternalTrigger12 {
 ///
 /// This applies to ADC3, ADC4 and ADC5
 ///
-#[cfg(any(
-    feature = "stm32g471",
-    feature = "stm32g473",
-    feature = "stm32g474",
-    feature = "stm32g483",
-    feature = "stm32g484",
-    feature = "stm32g491",
-    feature = "stm32g4a1",
-))]
+#[cfg(feature = "adc3")]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone, Copy, Default)]
 pub enum ExternalTrigger345 {
     /// TIM3 compare channel 1
@@ -517,15 +583,7 @@ impl From<ExternalTrigger12> for u8 {
     }
 }
 
-#[cfg(any(
-    feature = "stm32g471",
-    feature = "stm32g473",
-    feature = "stm32g474",
-    feature = "stm32g483",
-    feature = "stm32g484",
-    feature = "stm32g491",
-    feature = "stm32g4a1",
-))]
+#[cfg(feature = "adc3")]
 impl From<ExternalTrigger345> for u8 {
     fn from(et: ExternalTrigger345) -> u8 {
         match et {
@@ -566,7 +624,8 @@ impl From<ExternalTrigger345> for u8 {
 }
 
 /// Possible oversampling shift
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum OverSamplingShift {
     /// No right shift
     NoShift,
@@ -604,7 +663,8 @@ impl From<OverSamplingShift> for u8 {
 }
 
 /// Possible oversampling modes
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum OverSampling {
     /// Oversampling 2x
     Ratio_2,
@@ -639,7 +699,8 @@ impl From<OverSampling> for u8 {
 }
 
 /// Possible trigger modes
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum TriggerMode {
     /// Don't listen to external trigger
     Disabled,
@@ -662,7 +723,8 @@ impl From<TriggerMode> for u8 {
 }
 
 /// Data register alignment
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum Align {
     /// Right align output data
     Right,
@@ -679,6 +741,7 @@ impl From<Align> for bool {
 }
 
 /// Continuous mode enable/disable
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Continuous {
     /// Single mode, continuous disabled
@@ -695,7 +758,8 @@ pub enum Continuous {
 /// Number of channels to sample per trigger in discontinuous mode
 ///
 /// NOTE: This only applies to discontinuous
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum SubGroupLength {
     /// One single sample per trigger
     One = 0b000,
@@ -723,7 +787,8 @@ pub enum SubGroupLength {
 }
 
 /// DMA mode
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum Dma {
     /// No DMA, disabled
     Disabled,
@@ -734,7 +799,8 @@ pub enum Dma {
 }
 
 /// End-of-conversion interrupt enabled/disabled
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum Eoc {
     /// End-of-conversion interrupt disabled
     Disabled,
@@ -745,7 +811,8 @@ pub enum Eoc {
 }
 
 /// Input Type Selection
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub enum InputType {
     /// Single-Ended Input Channels
     SingleEnded,
@@ -762,6 +829,7 @@ impl From<InputType> for bool {
 }
 
 /// Sets the input type per channel
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DifferentialSelection(pub(crate) u32);
 impl DifferentialSelection {
@@ -808,7 +876,8 @@ impl DifferentialSelection {
 /// Configuration for the adc.
 /// There are some additional parameters on the adc peripheral that can be
 /// added here when needed but this covers several basic usecases.
-#[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Copy, Clone)]
 pub struct AdcConfig<ET> {
     pub(crate) resolution: Resolution,
     pub(crate) align: Align,
@@ -918,15 +987,7 @@ impl AdcConfig<ExternalTrigger12> {
     }
 }
 
-#[cfg(any(
-    feature = "stm32g471",
-    feature = "stm32g473",
-    feature = "stm32g474",
-    feature = "stm32g483",
-    feature = "stm32g484",
-    feature = "stm32g491",
-    feature = "stm32g4a1",
-))]
+#[cfg(feature = "adc3")]
 impl AdcConfig<ExternalTrigger345> {
     /// change the external_trigger field
     #[inline(always)]
