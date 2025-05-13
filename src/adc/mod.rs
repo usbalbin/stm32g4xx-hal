@@ -229,79 +229,6 @@ pub struct Configured;
 /// Type-State for Adc, indicating an peripheral configured for DMA
 #[derive(Debug)]
 pub struct DMA;
-/// Type-State for Adc, indicating am active measuring peripheral
-#[derive(Debug)]
-pub struct Active;
-
-/// Enum for the wait_for_conversion_sequence function,
-/// which can return either a stopped ADC typestate or a
-/// continuing ADC typestate.
-pub enum Conversion<ADC: Instance> {
-    /// Contains an Active Conversion ADC
-    Active(Adc<ADC, Active>),
-    /// Contains an Stopped ADC
-    Stopped(Adc<ADC, Configured>),
-}
-impl<ADC: Instance> Conversion<ADC> {
-    /// unwraps the enum and panics if the result is not an Active ADC
-    #[inline(always)]
-    pub fn unwrap_active(self) -> Adc<ADC, Active> {
-        match self {
-            Conversion::Active(adc) => adc,
-            _ => {
-                panic!("Conversion is Stopped, not Active!")
-            }
-        }
-    }
-
-    /// unwraps the enum and panics if the result is not a Stopped ADC
-    #[inline(always)]
-    pub fn unwrap_stopped(self) -> Adc<ADC, Configured> {
-        match self {
-            Conversion::Stopped(adc) => adc,
-            _ => {
-                panic!("Conversion is Continuing, not Stopped!")
-            }
-        }
-    }
-
-    /// Returns true if the adc is Active.
-    #[inline(always)]
-    pub fn is_active(&self) -> bool {
-        match *self {
-            Conversion::Active(..) => true,
-            Conversion::Stopped(..) => false,
-        }
-    }
-
-    /// Returns true if the adc is Stopped.
-    #[inline(always)]
-    pub fn is_stopped(&self) -> bool {
-        !self.is_active()
-    }
-
-    /// Converts from `Conversion<C, E>` to `Option<C>`.
-    ///
-    /// Converts self into an `Option<C>`, consuming self, and discarding the adc, if it is stopped.
-    #[inline(always)]
-    pub fn active(self) -> Option<Adc<ADC, Active>> {
-        match self {
-            Conversion::Active(adc) => Some(adc),
-            Conversion::Stopped(..) => None,
-        }
-    }
-
-    /// Converts from `Conversion<C, E>` to `Option<E>`.
-    ///
-    /// Converts self into an `Option<E>`, consuming self, and discarding the adc, if it is still active.
-    #[inline(always)]
-    pub fn stopped(self) -> Option<Adc<ADC, Configured>> {
-        match self {
-            Conversion::Active(..) => None,
-            Conversion::Stopped(adc) => Some(adc),
-        }
-    }
-}
 
 /// Analog to Digital Converter
 /// # Status
@@ -554,6 +481,7 @@ impl<ADCC: AdcCommonExt> AdcCommon<ADCC> {
 }
 
 impl<ADC: Instance, MODE> Adc<ADC, MODE> {
+    /// May only be called when adc is enabled
     #[inline(always)]
     fn start_ad_conversion(&mut self) {
         //Start conversion
@@ -567,6 +495,7 @@ impl<ADC: Instance, MODE> Adc<ADC, MODE> {
         while self.adc_reg.cr().read().adstart().bit_is_set() {}
     }
 
+    /// May only be called when adc is enabled
     fn cancel_and_disable(&mut self) {
         // Disable any ongoing conversions
         self.cancel_ad_conversion();
@@ -868,6 +797,52 @@ impl<ADC: Instance> Adc<ADC, Disabled> {
         self.adc.configure_channel(channel, sequence, sample_time)
     }
 
+    fn foo(&mut self, ch: u8, sequence: u8, sample_time: config::SampleTime) {
+        let reg_i = sequence / 4;
+        let i = sequence % 4;
+
+        //Set the channel in the right sequence field
+        match reg_i {
+            0 => self
+                .adc_reg
+                .sqr1()
+                .modify(|_, w| unsafe { w.sq(i).bits(ch) }),
+            1 => self
+                .adc_reg
+                .sqr2()
+                .modify(|_, w| unsafe { w.sq(i).bits(ch) }),
+            2 => self
+                .adc_reg
+                .sqr3()
+                .modify(|_, w| unsafe { w.sq(i).bits(ch) }),
+            3 => self
+                .adc_reg
+                .sqr4()
+                .modify(|_, w| unsafe { w.sq(i).bits(ch) }),
+            _ => unreachable!(),
+        };
+
+        //Set the sample time for the channel
+        let st = u8::from(sample_time);
+        unsafe {
+            match ch {
+                0..=9 => self.adc_reg.smpr1().modify(|_, w| w.smp(ch).bits(st)),
+                10.. => self.adc_reg.smpr2().modify(|_, w| w.smp(ch - 10).bits(st)),
+            };
+        }
+    }
+
+    pub fn configure_channels<CHANNELS: AdcSequence<ADC>>(
+        &mut self,
+        channels: &CHANNELS,
+    )
+    {
+        for (i, (channel_bits, sample_time)) in channels.into_iter().enumerate() {
+            self.foo(channel_bits, i, sample_time);
+        }
+        self.set_sequence_len();
+    }
+
     /// Synchronously convert a single sample
     /// Note that it reconfigures the adc sequence and doesn't restore it
     #[inline(always)]
@@ -930,78 +905,46 @@ impl<ADC: Instance> Adc<ADC, Configured> {
     }
 }
 
-impl<ADC: Instance> Conversion<ADC> {
-    /// Wait in a potential infite loop untill the ADC has stopped the conversion.
-    /// Everytime an sample is retrieved 'func' is called.
-    /// Note: when the ADC has stopped the conversion, for the last sample, func is NOT run.
-    pub fn wait_untill_stopped<F>(mut self, mut func: F) -> Adc<ADC, Configured>
-    where
-        F: FnMut(u16, &Adc<ADC, Active>),
-    {
-        loop {
-            match self {
-                Conversion::Stopped(adc) => return adc,
-                Conversion::Active(adc) => {
-                    self = adc.wait_for_conversion_sequence();
-                    if let Conversion::Active(adc) = self {
-                        let sample = adc.current_sample();
-                        func(sample, &adc);
+trait AdcSequence<ADC> {
+    fn into_iter(self) -> impl Iterator<Item = (u8, config::SampleTime)>;
+}
 
-                        self = Conversion::Active(adc);
-                    }
-                }
+impl<ADC: Instance, T: Channel<Ad<ADC>, ID = u8>> AdcSequence<ADC> for ((T, config::SampleTime),) {
+    fn into_iter(self) -> impl Iterator<Item = (u8, config::SampleTime)> {
+        IntoIterator::into_iter([(T::channel(), self.0 .1)])
+    }
+}
+
+macro_rules! foo {
+    ($($x:literal),+) => {paste::paste!{
+        #[allow(unused_parens)]
+        impl<ADC: Instance, $([<T $x>]: Channel<Ad<ADC>, ID = u8>),+>
+            AdcSequence<ADC> for ($(([<T $x>], config::SampleTime)),+)
+        {
+            fn into_iter(self) -> impl Iterator<Item = (u8, config::SampleTime)> {
+                IntoIterator::into_iter([$(([<T $x>]::channel(), self.$x.1)),+])
             }
         }
-    }
+    }};
 }
 
-impl<ADC: Instance> Adc<ADC, Active> {
-    /// Block until the conversion is completed and return to configured
-    pub fn wait_for_conversion_sequence(mut self) -> Conversion<ADC> {
-        self.adc.wait_for_conversion_sequence();
+foo![0];
+foo![0, 1];
+foo![0, 1, 2];
+foo![0, 1, 2, 3];
+foo![0, 1, 2, 3, 4];
+foo![0, 1, 2, 3, 4, 5];
+foo![0, 1, 2, 3, 4, 5, 6];
+foo![0, 1, 2, 3, 4, 5, 6, 7];
+foo![0, 1, 2, 3, 4, 5, 6, 7, 8];
+foo![0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+foo![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+foo![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+foo![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+foo![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
+foo![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+foo![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
-        if !self.adc.is_conversion_active() {
-            let inactive: Adc<_, Configured> = Adc {
-                adc: self.adc,
-                _status: PhantomData,
-            };
-
-            Conversion::Stopped(inactive)
-        } else {
-            Conversion::Active(self)
-        }
-    }
-
-    /// Returns if a conversion has been completed
-    /// Calling this before `wait_for_conversion_sequence`
-    /// should make that function return immediatly
-    pub fn is_conversion_done(&self) -> bool {
-        !self.adc.is_conversion_active()
-    }
-
-    /// Cancels an ongoing conversion
-    #[inline(always)]
-    pub fn cancel_conversion(mut self) -> Adc<ADC, Configured> {
-        self.adc.cancel_conversion();
-
-        Adc {
-            adc: self.adc,
-            _status: PhantomData,
-        }
-    }
-
-    /// get current sample
-    #[inline(always)]
-    pub fn current_sample(&self) -> u16 {
-        self.adc.current_sample()
-    }
-
-    /// clear end conversion flag
-    #[inline(always)]
-    pub fn clear_end_conversion_flag(&mut self) {
-        self.adc.clear_end_of_conversion_flag();
-    }
-}
 
 impl<ADC: Instance> Adc<ADC, DMA> {
     /// Starts conversion sequence. Waits for the hardware to indicate it's actually started.
