@@ -790,8 +790,6 @@ pub enum SubGroupLength {
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Debug, Copy, Clone)]
 pub enum Dma {
-    /// No DMA, disabled
-    Disabled,
     /// Single DMA, DMA will be disabled after each conversion sequence
     Single,
     /// Continuous DMA, DMA will remain enabled after conversion

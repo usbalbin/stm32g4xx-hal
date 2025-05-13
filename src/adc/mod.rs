@@ -431,31 +431,11 @@ impl<ADC: Instance> Conversion<ADC> {
 ///     tim.bdtr().modify(|_, w| w.moe().set_bit());
 /// }
 /// ```
-#[derive(Clone, Copy)]
-pub struct DynamicAdc<ADC: Instance> {
-    /// Current config of the ADC, kept up to date by the various set methods
-    config: config::AdcConfig<ADC::ExternalTrigger>,
-    /// The adc peripheral
-    adc_reg: ADC,
-    /// VDDA in millivolts calculated from the factory calibration and vrefint
-    calibrated_vdda: u32,
-}
-impl<ADC: Instance> fmt::Debug for DynamicAdc<ADC> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "DynamicAdc: {{ calibrated_vdda: {:?}, {:?}, ... }}",
-            self.calibrated_vdda, self.config
-        )
-    }
-}
-
-/// Typestate wrapper around DynamicAdc
 pub struct Adc<ADC: Instance, STATUS> {
-    adc: DynamicAdc<ADC>,
+    adc_reg: ADC,
     _status: PhantomData<STATUS>,
 }
-impl<ADC: Instance, STATUS> fmt::Debug for Adc<ADC, STATUS>
+/*impl<ADC: Instance, STATUS> fmt::Debug for Adc<ADC, STATUS>
 where
     STATUS: fmt::Debug,
 {
@@ -463,10 +443,10 @@ where
         write!(
             f,
             "Adc<{:?}>: {{ calibrated_vdda: {:?}, {:?}, ... }}",
-            self._status, self.adc.calibrated_vdda, self.adc.config
+            self._status,
         )
     }
-}
+}*/
 
 /// used to create an ADC instance from the stm32::Adc
 pub trait AdcClaim<ADC: Instance> {
@@ -482,486 +462,6 @@ pub trait AdcClaim<ADC: Instance> {
     ) -> Adc<ADC, Configured>;
 }
 
-impl<ADC: Instance> DynamicAdc<ADC> {
-    /// Converts a sample value to millivolts using calibrated VDDA and configured resolution
-    #[inline(always)]
-    pub fn sample_to_millivolts(&self, sample: u16) -> u16 {
-        Vref::sample_to_millivolts_ext(sample, self.calibrated_vdda, self.config.resolution)
-    }
-
-    /// Disables the Voltage Regulator and release the ADC
-    #[inline(always)]
-    pub fn release(mut self) -> ADC {
-        self.enable_deeppwd_down();
-
-        self.adc_reg
-    }
-
-    /// Powers-up an powered-down Adc
-    #[inline(always)]
-    pub fn power_up(&mut self, delay: &mut impl DelayNs) {
-        if self.is_deeppwd_enabled() {
-            self.disable_deeppwd_down();
-        }
-        if !self.is_vreg_enabled() {
-            self.enable_vreg(delay);
-        }
-        if self.is_enabled() {
-            self.disable();
-        }
-    }
-
-    /// Puts a Disabled Adc into Powered Mode
-    #[inline(always)]
-    pub fn power_down(&mut self) {
-        self.disable_vreg();
-    }
-
-    /// Enables the Deep Power Down Modus
-    #[inline(always)]
-    pub fn enable_deeppwd_down(&mut self) {
-        self.adc_reg.cr().modify(|_, w| w.deeppwd().set_bit());
-    }
-
-    /// Disables the Deep Power Down Modus
-    #[inline(always)]
-    pub fn disable_deeppwd_down(&mut self) {
-        self.adc_reg.cr().modify(|_, w| w.deeppwd().clear_bit());
-    }
-
-    /// Enables the Voltage Regulator
-    #[inline(always)]
-    pub fn enable_vreg(&mut self, delay: &mut impl DelayNs) {
-        self.adc_reg.cr().modify(|_, w| w.advregen().set_bit());
-        while !self.adc_reg.cr().read().advregen().bit_is_set() {}
-
-        // According to the STM32G4xx Reference Manual, section 21.4.6, we need
-        // to wait for T_ADCVREG_STUP after enabling the internal voltage
-        // regulator. For the STM32G431, this is 20 us. We choose 25 us to
-        // account for bad clocks.
-        delay.delay_us(25);
-    }
-
-    /// Disables the Voltage Regulator
-    #[inline(always)]
-    pub fn disable_vreg(&mut self) {
-        self.adc_reg.cr().modify(|_, w| w.advregen().clear_bit());
-    }
-
-    /// Returns if the ADC is enabled (ADEN)
-    #[inline(always)]
-    pub fn is_enabled(&self) -> bool {
-        self.adc_reg.cr().read().aden().bit_is_set()
-    }
-
-    /// Disables the adc, since we don't know in what state we get it.
-    #[inline(always)]
-    pub fn disable(&mut self) {
-        // Disable any ongoing conversions
-        self.cancel_conversion();
-
-        // Turn off ADC
-        self.adc_reg.cr().modify(|_, w| w.addis().set_bit());
-        while self.adc_reg.cr().read().addis().bit_is_set() {}
-
-        // Wait until the ADC has turned off
-        while self.adc_reg.cr().read().aden().bit_is_set() {}
-    }
-
-    /// Enables the adc
-    #[inline(always)]
-    pub fn enable(&mut self) {
-        self.calibrate_all();
-        self.apply_config(self.config);
-
-        self.adc_reg.isr().modify(|_, w| w.adrdy().clear());
-        self.adc_reg.cr().modify(|_, w| w.aden().set_bit());
-
-        // Wait for adc to get ready
-        while !self.adc_reg.isr().read().adrdy().bit_is_set() {}
-
-        // Clear ready flag
-        self.adc_reg.isr().modify(|_, w| w.adrdy().clear());
-
-        self.clear_end_of_conversion_flag();
-    }
-
-    /// enable the adc and configure for DMA.
-    pub fn enable_dma(&mut self, dma: config::Dma) {
-        self.set_dma(dma);
-        self.enable();
-    }
-
-    /// Applies all fields in AdcConfig
-    #[inline(always)]
-    fn apply_config(&mut self, config: config::AdcConfig<ADC::ExternalTrigger>) {
-        self.set_resolution(config.resolution);
-        self.set_align(config.align);
-        self.set_external_trigger(config.external_trigger);
-        self.set_continuous(config.continuous);
-        self.set_subgroup_len(config.subgroup_len);
-        self.set_dma(config.dma);
-        self.set_end_of_conversion_interrupt(config.end_of_conversion_interrupt);
-        self.set_overrun_interrupt(config.overrun_interrupt);
-        self.set_default_sample_time(config.default_sample_time);
-        self.set_channel_input_type(config.difsel);
-        self.set_auto_delay(config.auto_delay);
-
-        if let Some(vdda) = config.vdda {
-            self.calibrated_vdda = vdda;
-        }
-    }
-
-    /// Sets the sampling resolution
-    #[inline(always)]
-    pub fn set_resolution(&mut self, resolution: config::Resolution) {
-        self.config.resolution = resolution;
-        unsafe {
-            self.adc_reg
-                .cfgr()
-                .modify(|_, w| w.res().bits(resolution.into()));
-        }
-    }
-
-    /// Enable oversampling
-    #[inline(always)]
-    pub fn set_oversampling(
-        &mut self,
-        oversampling: config::OverSampling,
-        shift: config::OverSamplingShift,
-    ) {
-        self.adc_reg.cfgr2().modify(|_, w| unsafe {
-            w.ovsr()
-                .bits(oversampling.into())
-                .ovss()
-                .bits(shift.into())
-                .rovse()
-                .set_bit()
-        });
-    }
-
-    /// Sets the DR register alignment to left or right
-    #[inline(always)]
-    pub fn set_align(&mut self, align: config::Align) {
-        self.config.align = align;
-        self.adc_reg
-            .cfgr()
-            .modify(|_, w| w.align().bit(align.into()));
-    }
-
-    /// Sets which external trigger to use and if it is disabled, rising, falling or both
-    #[inline(always)]
-    pub fn set_external_trigger(
-        &mut self,
-        (edge, extsel): (config::TriggerMode, ADC::ExternalTrigger),
-    ) {
-        self.config.external_trigger = (edge, extsel);
-        self.adc_reg
-            .cfgr()
-            .modify(|_, w| unsafe { w.extsel().bits(extsel.into()).exten().bits(edge.into()) });
-    }
-
-    /// Sets auto delay to true or false
-    #[inline(always)]
-    pub fn set_auto_delay(&mut self, delay: bool) {
-        self.config.auto_delay = delay;
-        self.adc_reg.cfgr().modify(|_, w| w.autdly().bit(delay));
-    }
-
-    /// Enables and disables dis-/continuous mode
-    #[inline(always)]
-    pub fn set_continuous(&mut self, continuous: config::Continuous) {
-        self.config.continuous = continuous;
-        self.adc_reg.cfgr().modify(|_, w| {
-            w.cont()
-                .bit(continuous == config::Continuous::Continuous)
-                .discen()
-                .bit(continuous == config::Continuous::Discontinuous)
-        });
-    }
-
-    #[inline(always)]
-    // NOTE: The software is allowed to write these bits only when ADSTART = 0
-    fn set_subgroup_len(&mut self, subgroup_len: config::SubGroupLength) {
-        self.config.subgroup_len = subgroup_len;
-        unsafe {
-            self.adc_reg
-                .cfgr()
-                .modify(|_, w| w.discnum().bits(subgroup_len as u8));
-        }
-    }
-
-    /// Sets DMA to disabled, single or continuous
-    #[inline(always)]
-    pub fn set_dma(&mut self, dma: config::Dma) {
-        self.config.dma = dma;
-        let (dds, en) = match dma {
-            config::Dma::Disabled => (false, false),
-            config::Dma::Single => (false, true),
-            config::Dma::Continuous => (true, true),
-        };
-        self.adc_reg.cfgr().modify(|_, w| {
-            w
-                //DDS stands for "DMA disable selection"
-                //0 means do one DMA then stop
-                //1 means keep sending DMA requests as long as DMA=1
-                .dmacfg()
-                .bit(dds)
-                .dmaen()
-                .bit(en)
-        });
-    }
-
-    /// Sets if the end-of-conversion behaviour.
-    /// The end-of-conversion interrupt occur either per conversion or for the whole sequence.
-    #[inline(always)]
-    pub fn set_end_of_conversion_interrupt(&mut self, eoc: config::Eoc) {
-        self.config.end_of_conversion_interrupt = eoc;
-        let (en, eocs) = match eoc {
-            config::Eoc::Disabled => (false, false),
-            config::Eoc::Conversion => (true, true),
-            config::Eoc::Sequence => (true, false),
-        };
-        self.adc_reg
-            .ier()
-            .modify(|_, w| w.eosie().bit(eocs).eocie().bit(en));
-    }
-
-    /// Enable/disable overrun interrupt
-    ///
-    /// This is triggered when the AD finishes a conversion before the last value was read by CPU/DMA
-    pub fn set_overrun_interrupt(&mut self, enable: bool) {
-        self.adc_reg.ier().modify(|_, w| w.ovrie().bit(enable));
-    }
-
-    /// Sets the default sample time that is used for one-shot conversions.
-    /// [configure_channel](#method.configure_channel) and [start_conversion](#method.start_conversion) can be \
-    /// used for configurations where different sampling times are required per channel.
-    #[inline(always)]
-    pub fn set_default_sample_time(&mut self, sample_time: config::SampleTime) {
-        self.config.default_sample_time = sample_time;
-    }
-
-    /// Sets the differential selection per channel.
-    #[inline(always)]
-    pub fn set_channel_input_type(&mut self, df: config::DifferentialSelection) {
-        self.config.difsel = df;
-
-        self.adc_reg.difsel().modify(|_, w| {
-            for i in 0..19 {
-                w.difsel(i).bit(df.get_channel(i).into());
-            }
-            w
-        });
-    }
-
-    /// Reset the sequence
-    #[inline(always)]
-    pub fn reset_sequence(&mut self) {
-        //The reset state is One conversion selected
-        self.adc_reg
-            .sqr1()
-            .modify(|_, w| unsafe { w.l().bits(config::Sequence::One.into()) });
-    }
-
-    /// Returns the current sequence length. Primarily useful for configuring DMA.
-    #[inline(always)]
-    pub fn sequence_length(&mut self) -> u8 {
-        self.adc_reg.sqr1().read().l().bits() + 1
-    }
-
-    /// Returns the address of the ADC data register. Primarily useful for configuring DMA.
-    #[inline(always)]
-    pub fn data_register_address(&self) -> u32 {
-        self.adc_reg.dr() as *const _ as u32
-    }
-
-    /// Calibrate the adc for <Input Type>
-    #[inline(always)]
-    pub fn calibrate(&mut self, it: config::InputType) {
-        match it {
-            config::InputType::SingleEnded => {
-                self.adc_reg.cr().modify(|_, w| w.adcaldif().clear_bit());
-            }
-            config::InputType::Differential => {
-                self.adc_reg.cr().modify(|_, w| w.adcaldif().set_bit());
-            }
-        }
-
-        self.adc_reg.cr().modify(|_, w| w.adcal().set_bit());
-        while self.adc_reg.cr().read().adcal().bit_is_set() {}
-    }
-
-    /// Calibrate the Adc for all Input Types
-    #[inline(always)]
-    pub fn calibrate_all(&mut self) {
-        self.calibrate(config::InputType::Differential);
-        self.calibrate(config::InputType::SingleEnded);
-    }
-
-    /// Configure a channel for sampling.
-    /// It will make sure the sequence is at least as long as the `sequence` provided.
-    /// # Arguments
-    /// * `channel` - channel to configure
-    /// * `sequence` - where in the sequence to sample the channel. Also called rank in some STM docs/code
-    /// * `sample_time` - how long to sample for. See datasheet and ref manual to work out how long you need\
-    ///   to sample for at a given ADC clock frequency
-    pub fn configure_channel<CHANNEL>(
-        &mut self,
-        _channel: &CHANNEL,
-        sequence: config::Sequence,
-        sample_time: config::SampleTime,
-    ) where
-        CHANNEL: Channel<Ad<ADC>, ID = u8>,
-    {
-        //Check the sequence is long enough
-        self.adc_reg.sqr1().modify(|r, w| unsafe {
-            let prev: config::Sequence = r.l().bits().into();
-            if prev < sequence {
-                w.l().bits(sequence.into())
-            } else {
-                w
-            }
-        });
-
-        let channel = CHANNEL::channel();
-        let reg_i = u8::from(sequence) / 4;
-        let i = u8::from(sequence) % 4;
-
-        //Set the channel in the right sequence field
-        match reg_i {
-            0 => self
-                .adc_reg
-                .sqr1()
-                .modify(|_, w| unsafe { w.sq(i).bits(channel) }),
-            1 => self
-                .adc_reg
-                .sqr2()
-                .modify(|_, w| unsafe { w.sq(i).bits(channel) }),
-            2 => self
-                .adc_reg
-                .sqr3()
-                .modify(|_, w| unsafe { w.sq(i).bits(channel) }),
-            3 => self
-                .adc_reg
-                .sqr4()
-                .modify(|_, w| unsafe { w.sq(i).bits(channel) }),
-            _ => unreachable!(),
-        };
-
-        //Set the sample time for the channel
-        let st = u8::from(sample_time);
-        let i = if channel > 9 { channel - 10 } else { channel };
-        unsafe {
-            match channel {
-                0..=9 => self.adc_reg.smpr1().modify(|_, w| w.smp(i).bits(st)),
-                10.. => self.adc_reg.smpr2().modify(|_, w| w.smp(i).bits(st)),
-            };
-        }
-    }
-    /// Synchronously convert a single sample
-    /// Note that it reconfigures the adc sequence and doesn't restore it
-    pub fn convert<PIN>(&mut self, pin: &PIN, sample_time: config::SampleTime) -> u16
-    where
-        PIN: Channel<Ad<ADC>, ID = u8>,
-    {
-        let saved_config = self.config;
-        unsafe {
-            self.adc_reg.cfgr().modify(
-                |_, w| {
-                    w.dmaen()
-                        .clear_bit() //Disable dma
-                        .cont()
-                        .clear_bit() //Disable continuous mode
-                        .exten()
-                        .bits(config::TriggerMode::Disabled.into())
-                }, //Disable trigger
-            );
-        }
-        self.adc_reg.ier().modify(
-            |_, w| w.eocie().clear_bit(), //Disable end of conversion interrupt
-        );
-
-        self.enable();
-        self.reset_sequence();
-        self.configure_channel(pin, config::Sequence::One, sample_time);
-        self.start_conversion();
-
-        //Wait for the sequence to complete
-        self.wait_for_conversion_sequence();
-
-        let result = self.current_sample();
-
-        self.disable();
-
-        //Reset the config
-        self.apply_config(saved_config);
-
-        result
-    }
-
-    /// Resets the end-of-conversion flag
-    #[inline(always)]
-    pub fn clear_end_of_conversion_flag(&mut self) {
-        self.adc_reg.isr().modify(|_, w| w.eoc().clear());
-    }
-
-    /// Block until the conversion is completed and return to configured
-    pub fn wait_for_conversion_sequence(&mut self) {
-        while !self.adc_reg.isr().read().eoc().bit_is_set() {}
-    }
-
-    /// get current sample
-    #[inline(always)]
-    pub fn current_sample(&self) -> u16 {
-        self.adc_reg.dr().read().rdata().bits()
-    }
-
-    /// Starts conversion sequence. Waits for the hardware to indicate it's actually started.
-    #[inline(always)]
-    pub fn start_conversion(&mut self) {
-        //Start conversion
-        self.adc_reg.cr().modify(|_, w| w.adstart().set_bit());
-    }
-
-    /// Cancels an ongoing conversion
-    #[inline(always)]
-    pub fn cancel_conversion(&mut self) {
-        self.adc_reg.cr().modify(|_, w| w.adstp().set_bit());
-        while self.adc_reg.cr().read().adstart().bit_is_set() {}
-    }
-
-    /// Returns if the Voltage Regulator is enabled
-    #[inline(always)]
-    pub fn is_vreg_enabled(&self) -> bool {
-        self.adc_reg.cr().read().advregen().bit_is_set()
-    }
-
-    /// Returns if Deep Power Down is enabled
-    #[inline(always)]
-    pub fn is_deeppwd_enabled(&self) -> bool {
-        self.adc_reg.cr().read().deeppwd().bit_is_set()
-    }
-
-    /// Returns if a conversion is active
-    #[inline(always)]
-    pub fn is_conversion_active(&self) -> bool {
-        self.adc_reg.cr().read().adstart().bit_is_set()
-    }
-
-    /// Read overrun flag
-    #[inline(always)]
-    pub fn get_overrun_flag(&self) -> bool {
-        self.adc_reg.isr().read().ovr().bit()
-    }
-
-    /// Resets the overrun flag
-    #[inline(always)]
-    pub fn clear_overrun_flag(&mut self) {
-        self.adc_reg.isr().modify(|_, w| w.ovr().clear());
-    }
-}
-
 impl<ADC: Instance> AdcClaim<ADC> for AdcCommon<ADC::Common> {
     /// Runs calibration and applies the supplied config
     /// # Arguments
@@ -969,14 +469,8 @@ impl<ADC: Instance> AdcClaim<ADC> for AdcCommon<ADC::Common> {
     /// TODO: fix needing SYST
     #[inline(always)]
     fn claim(&self, adc: ADC, delay: &mut impl DelayNs) -> Adc<ADC, Disabled> {
-        let dynadc = DynamicAdc {
-            config: config::AdcConfig::default(),
-            adc_reg: adc,
-            calibrated_vdda: VDDA_CALIB,
-        };
-
         let adc: Adc<ADC, PoweredDown> = Adc {
-            adc: dynadc,
+            adc_reg: adc,
             _status: PhantomData,
         };
 
@@ -1059,15 +553,60 @@ impl<ADCC: AdcCommonExt> AdcCommon<ADCC> {
     }
 }
 
-impl<ADC: Instance, STATUS> Adc<ADC, STATUS> {
-    /// Converts a sample value to millivolts using calibrated VDDA and configured resolution
+impl<ADC: Instance, MODE> Adc<ADC, MODE> {
     #[inline(always)]
-    pub fn sample_to_millivolts(&self, sample: u16) -> u16 {
-        self.adc.sample_to_millivolts(sample)
+    fn start_ad_conversion(&mut self) {
+        //Start conversion
+        self.adc_reg.cr().modify(|_, w| w.adstart().set_bit());
+    }
+
+    /// Cancels an ongoing conversion
+    #[inline(always)]
+    fn cancel_ad_conversion(&mut self) {
+        self.adc_reg.cr().modify(|_, w| w.adstp().set_bit());
+        while self.adc_reg.cr().read().adstart().bit_is_set() {}
+    }
+
+    fn cancel_and_disable(&mut self) {
+        // Disable any ongoing conversions
+        self.cancel_ad_conversion();
+
+        // Turn off ADC
+        self.adc_reg.cr().modify(|_, w| w.addis().set_bit());
+        while self.adc_reg.cr().read().addis().bit_is_set() {}
+
+        // Wait until the ADC has turned off
+        while self.adc_reg.cr().read().aden().bit_is_set() {}
+    }
+
+    fn disable_vreg(&mut self) {
+        self.adc_reg.cr().modify(|_, w| w.advregen().clear_bit());
     }
 }
 
 impl<ADC: Instance> Adc<ADC, PoweredDown> {
+    fn apply_config(&mut self, config: config::AdcConfig<ADC::ExternalTrigger>) {
+        self.set_resolution(config.resolution);
+        self.set_align(config.align);
+        self.set_external_trigger(config.external_trigger);
+        self.set_continuous(config.continuous);
+        self.set_subgroup_len(config.subgroup_len);
+        self.set_dma(config.dma);
+        self.set_end_of_conversion_interrupt(config.end_of_conversion_interrupt);
+        self.set_overrun_interrupt(config.overrun_interrupt);
+        self.set_default_sample_time(config.default_sample_time);
+        self.set_channel_input_type(config.difsel);
+        self.set_auto_delay(config.auto_delay);
+    }
+
+    fn set_resolution(&mut self, resolution: config::Resolution) {
+        unsafe {
+            self.adc_reg
+                .cfgr()
+                .modify(|_, w| w.res().bits(resolution.into()));
+        }
+    }
+
     /// Powers-up an powered-down Adc
     #[inline(always)]
     pub fn power_up(mut self, delay: &mut impl DelayNs) -> Adc<ADC, Disabled> {
@@ -1094,35 +633,6 @@ impl<ADC: Instance> Adc<ADC, PoweredDown> {
     #[inline(always)]
     pub fn release(self) -> ADC {
         self.adc.release()
-    }
-
-    /// Releases the Adc as a DynamicAdc.
-    /// While this is not unsafe; using methods while the Adc is in the wrong state will mess it up.
-    #[inline(always)]
-    pub fn into_dynamic_adc(self) -> DynamicAdc<ADC> {
-        self.adc
-    }
-
-    /// Retrieves the DynamicAdc.
-    /// This will put the adc in power down state.
-    #[inline(always)]
-    pub fn from_dynamic_adc(mut dynadc: DynamicAdc<ADC>) -> Self {
-        if dynadc.is_conversion_active() {
-            dynadc.cancel_conversion();
-        }
-        if dynadc.is_enabled() {
-            dynadc.disable();
-        }
-        if dynadc.is_deeppwd_enabled() {
-            dynadc.disable_deeppwd_down();
-        }
-
-        dynadc.power_down();
-
-        Adc {
-            adc: dynadc,
-            _status: PhantomData,
-        }
     }
 
     /// Enables the Deep Power Down Modus
@@ -1167,14 +677,23 @@ impl<ADC: Instance> Adc<ADC, Disabled> {
     /// panics if set to Dma::Disabled
     #[inline(always)]
     pub fn enable_dma(mut self, dma: config::Dma) -> Adc<ADC, DMA> {
-        if let config::Dma::Disabled = dma {
-            panic!("Requesting Enabling DMA with DisableDma parameter");
-        }
-
-        self.adc.enable_dma(dma);
+        let dds = match dma {
+            config::Dma::Single => false,
+            config::Dma::Continuous => true,
+        };
+        self.adc_reg.cfgr().modify(|_, w| {
+            w
+                //DDS stands for "DMA disable selection"
+                //0 means do one DMA then stop
+                //1 means keep sending DMA requests as long as DMA=1
+                .dmacfg()
+                .bit(dds)
+                .dmaen()
+                .enabled()
+        });
 
         Adc {
-            adc: self.adc,
+            adc_reg: self.adc_reg,
             _status: PhantomData,
         }
     }
@@ -1182,10 +701,10 @@ impl<ADC: Instance> Adc<ADC, Disabled> {
     /// Puts a disabled Adc into PoweredDown Mode
     #[inline(always)]
     pub fn power_down(mut self) -> Adc<ADC, PoweredDown> {
-        self.adc.power_down();
+        self.disable_vreg();
 
         Adc {
-            adc: self.adc,
+            adc_reg: self.adc_reg,
             _status: PhantomData,
         }
     }
@@ -1197,7 +716,14 @@ impl<ADC: Instance> Adc<ADC, Disabled> {
         oversampling: config::OverSampling,
         shift: config::OverSamplingShift,
     ) {
-        self.adc.set_oversampling(oversampling, shift)
+        self.adc_reg.cfgr2().modify(|_, w| unsafe {
+            w.ovsr()
+                .bits(oversampling.into())
+                .ovss()
+                .bits(shift.into())
+                .rovse()
+                .set_bit()
+        });
     }
 
     /// Sets the sampling resolution
@@ -1209,7 +735,9 @@ impl<ADC: Instance> Adc<ADC, Disabled> {
     /// Sets the DR register alignment to left or right
     #[inline(always)]
     pub fn set_align(&mut self, align: config::Align) {
-        self.adc.set_align(align)
+        self.adc_reg
+            .cfgr()
+            .modify(|_, w| w.align().bit(align.into()));
     }
 
     /// Sets which external trigger to use and if it is disabled, rising, falling or both
@@ -1218,37 +746,50 @@ impl<ADC: Instance> Adc<ADC, Disabled> {
         &mut self,
         (edge, extsel): (config::TriggerMode, ADC::ExternalTrigger),
     ) {
-        self.adc.set_external_trigger((edge, extsel))
+        self.adc_reg
+            .cfgr()
+            .modify(|_, w| unsafe { w.extsel().bits(extsel.into()).exten().bits(edge.into()) });
     }
 
     /// Sets auto delay to true or false
     #[inline(always)]
     pub fn set_auto_delay(&mut self, delay: bool) {
-        self.adc.set_auto_delay(delay)
+        self.adc_reg.cfgr().modify(|_, w| w.autdly().bit(delay));
     }
 
     /// Enables and disables continuous mode
     #[inline(always)]
     pub fn set_continuous(&mut self, continuous: config::Continuous) {
-        self.adc.set_continuous(continuous)
+        self.adc_reg.cfgr().modify(|_, w| {
+            w.cont()
+                .bit(continuous == config::Continuous::Continuous)
+                .discen()
+                .bit(continuous == config::Continuous::Discontinuous)
+        });
     }
 
     /// Set subgroup length, number of AD readings per trigger event (only relevant in Discontinuous mode)
     pub fn set_subgroup_len(&mut self, subgroup_len: config::SubGroupLength) {
-        self.adc.set_subgroup_len(subgroup_len);
-    }
-
-    /// Sets DMA to disabled, single or continuous
-    #[inline(always)]
-    pub fn set_dma(&mut self, dma: config::Dma) {
-        self.adc.set_dma(dma)
+        unsafe {
+            self.adc_reg
+                .cfgr()
+                .modify(|_, w| w.discnum().bits(subgroup_len as u8));
+        }
     }
 
     /// Sets if the end-of-conversion behaviour.
     /// The end-of-conversion interrupt occur either per conversion or for the whole sequence.
     #[inline(always)]
     pub fn set_end_of_conversion_interrupt(&mut self, eoc: config::Eoc) {
-        self.adc.set_end_of_conversion_interrupt(eoc)
+        self.config.end_of_conversion_interrupt = eoc;
+        let (en, eocs) = match eoc {
+            config::Eoc::Disabled => (false, false),
+            config::Eoc::Conversion => (true, true),
+            config::Eoc::Sequence => (true, false),
+        };
+        self.adc_reg
+            .ier()
+            .modify(|_, w| w.eosie().bit(eocs).eocie().bit(en));
     }
 
     /// Enable/disable overrun interrupt
@@ -1256,45 +797,56 @@ impl<ADC: Instance> Adc<ADC, Disabled> {
     /// This is triggered when the AD finishes a conversion before the last value was read by CPU/DMA
     #[inline(always)]
     pub fn set_overrun_interrupt(&mut self, enable: bool) {
-        self.adc.set_overrun_interrupt(enable)
-    }
-
-    /// Sets the default sample time that is used for one-shot conversions.
-    /// [configure_channel](#method.configure_channel) and [start_conversion](#method.start_conversion) can be \
-    /// used for configurations where different sampling times are required per channel.
-    #[inline(always)]
-    pub fn set_default_sample_time(&mut self, sample_time: config::SampleTime) {
-        self.adc.set_default_sample_time(sample_time)
+        self.adc_reg.ier().modify(|_, w| w.ovrie().bit(enable));
     }
 
     /// Sets the differential selection per channel.
     #[inline(always)]
     pub fn set_channel_input_type(&mut self, df: config::DifferentialSelection) {
-        self.adc.set_channel_input_type(df)
+        self.adc_reg.difsel().modify(|_, w| {
+            for i in 0..19 {
+                w.difsel(i).bit(df.get_channel(i).into());
+            }
+            w
+        });
     }
 
     /// Reset the sequence
     #[inline(always)]
     pub fn reset_sequence(&mut self) {
-        self.adc.reset_sequence()
+        //The reset state is One conversion selected
+        self.adc_reg
+            .sqr1()
+            .modify(|_, w| unsafe { w.l().bits(config::Sequence::One.into()) });
     }
 
     /// Returns the current sequence length. Primarily useful for configuring DMA.
     #[inline(always)]
     pub fn sequence_length(&mut self) -> u8 {
-        self.adc.sequence_length()
+        self.adc_reg.sqr1().read().l().bits() + 1
     }
 
     /// Calibrate the adc for <Input Type>
     #[inline(always)]
     pub fn calibrate(&mut self, it: config::InputType) {
-        self.adc.calibrate(it)
+        match it {
+            config::InputType::SingleEnded => {
+                self.adc_reg.cr().modify(|_, w| w.adcaldif().clear_bit());
+            }
+            config::InputType::Differential => {
+                self.adc_reg.cr().modify(|_, w| w.adcaldif().set_bit());
+            }
+        }
+
+        self.adc_reg.cr().modify(|_, w| w.adcal().set_bit());
+        while self.adc_reg.cr().read().adcal().bit_is_set() {}
     }
 
     /// Calibrate the Adc for all Input Types
     #[inline(always)]
     pub fn calibrate_all(&mut self) {
-        self.adc.calibrate_all();
+        self.calibrate(config::InputType::Differential);
+        self.calibrate(config::InputType::SingleEnded);
     }
 
     /// Configure a channel for sampling.
@@ -1455,29 +1007,30 @@ impl<ADC: Instance> Adc<ADC, DMA> {
     /// Starts conversion sequence. Waits for the hardware to indicate it's actually started.
     #[inline(always)]
     pub fn start_conversion(&mut self) {
-        self.adc.start_conversion()
+        self.start_ad_conversion()
     }
 
     /// Cancels an ongoing conversion
     #[inline(always)]
     pub fn cancel_conversion(&mut self) {
-        self.adc.cancel_conversion()
+        self.cancel_ad_conversion()
     }
 
     /// Stop the Adc
-    #[inline(always)]
-    pub fn stop(&mut self) {
-        self.adc.disable()
-    }
+    //#[inline(always)]
+    //pub fn stop(&mut self) {
+    //    self.cancel_and_disable();
+    //}
 
     /// Disable the Adc
     #[inline(always)]
     pub fn disable(mut self) -> Adc<ADC, Disabled> {
-        self.adc.set_dma(config::Dma::Disabled);
-        self.adc.disable();
+        self.adc_reg.cfgr().modify(|_, w| w.dmaen().disabled());
+
+        self.cancel_and_disable();
 
         Adc {
-            adc: self.adc,
+            adc_reg: self.adc_reg,
             _status: PhantomData,
         }
     }
@@ -1485,20 +1038,20 @@ impl<ADC: Instance> Adc<ADC, DMA> {
     /// Read overrun flag
     #[inline(always)]
     pub fn get_overrun_flag(&self) -> bool {
-        self.adc.get_overrun_flag()
+        self.adc_reg.isr().read().ovr().bit()
     }
 
     /// Resets the overrun flag
     #[inline(always)]
     pub fn clear_overrun_flag(&mut self) {
-        self.adc.clear_overrun_flag();
+        self.adc_reg.isr().modify(|_, w| w.ovr().clear());
     }
 }
 
 unsafe impl<ADC: Instance> TargetAddress<PeripheralToMemory> for Adc<ADC, DMA> {
     #[inline(always)]
     fn address(&self) -> u32 {
-        self.adc.data_register_address()
+        self.adc_reg.dr().as_ptr() as u32
     }
 
     type MemSize = u16;
