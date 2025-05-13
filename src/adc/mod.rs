@@ -85,6 +85,7 @@ impl AdcCommonExt for stm32::ADC12_COMMON {
     }
 }
 
+#[cfg(feature = "adc3")]
 impl AdcCommonExt for stm32::ADC345_COMMON {
     const PTR: *const stm32::adc12_common::RegisterBlock = Self::ptr();
 

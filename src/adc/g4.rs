@@ -1,7 +1,10 @@
 use crate::{
-    gpio::{gpioa, gpiob, gpioc, gpiod, gpioe, gpiof, Analog},
+    gpio::{gpioa, gpiob, gpioc, gpiof, Analog},
     opamp,
 };
+
+#[cfg(feature = "adc3")]
+use crate::gpio::{gpiod, gpioe};
 
 use super::{adc_channel_helper, adc_opamp, adc_pins, temperature::Temperature, Vbat, Vref};
 
