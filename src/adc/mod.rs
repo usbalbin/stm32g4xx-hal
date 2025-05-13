@@ -825,99 +825,37 @@ impl<ADC: Instance> DynamicAdc<ADC> {
         });
 
         let channel = CHANNEL::channel();
+        let reg_i = u8::from(sequence) / 4;
+        let i = u8::from(sequence) % 4;
 
         //Set the channel in the right sequence field
-        match sequence {
-            config::Sequence::One => self
+        match reg_i {
+            0 => self
                 .adc_reg
                 .sqr1()
-                .modify(|_, w| unsafe { w.sq1().bits(channel) }),
-            config::Sequence::Two => self
-                .adc_reg
-                .sqr1()
-                .modify(|_, w| unsafe { w.sq2().bits(channel) }),
-            config::Sequence::Three => self
-                .adc_reg
-                .sqr1()
-                .modify(|_, w| unsafe { w.sq3().bits(channel) }),
-            config::Sequence::Four => self
-                .adc_reg
-                .sqr1()
-                .modify(|_, w| unsafe { w.sq4().bits(channel) }),
-            config::Sequence::Five => self
+                .modify(|_, w| unsafe { w.sq(i).bits(channel) }),
+            1 => self
                 .adc_reg
                 .sqr2()
-                .modify(|_, w| unsafe { w.sq5().bits(channel) }),
-            config::Sequence::Six => self
-                .adc_reg
-                .sqr2()
-                .modify(|_, w| unsafe { w.sq6().bits(channel) }),
-            config::Sequence::Seven => self
-                .adc_reg
-                .sqr2()
-                .modify(|_, w| unsafe { w.sq7().bits(channel) }),
-            config::Sequence::Eight => self
-                .adc_reg
-                .sqr2()
-                .modify(|_, w| unsafe { w.sq8().bits(channel) }),
-            config::Sequence::Nine => self
-                .adc_reg
-                .sqr2()
-                .modify(|_, w| unsafe { w.sq9().bits(channel) }),
-            config::Sequence::Ten => self
+                .modify(|_, w| unsafe { w.sq(i).bits(channel) }),
+            2 => self
                 .adc_reg
                 .sqr3()
-                .modify(|_, w| unsafe { w.sq10().bits(channel) }),
-            config::Sequence::Eleven => self
-                .adc_reg
-                .sqr3()
-                .modify(|_, w| unsafe { w.sq11().bits(channel) }),
-            config::Sequence::Twelve => self
-                .adc_reg
-                .sqr3()
-                .modify(|_, w| unsafe { w.sq12().bits(channel) }),
-            config::Sequence::Thirteen => self
-                .adc_reg
-                .sqr3()
-                .modify(|_, w| unsafe { w.sq13().bits(channel) }),
-            config::Sequence::Fourteen => self
-                .adc_reg
-                .sqr3()
-                .modify(|_, w| unsafe { w.sq14().bits(channel) }),
-            config::Sequence::Fifteen => self
+                .modify(|_, w| unsafe { w.sq(i).bits(channel) }),
+            3 => self
                 .adc_reg
                 .sqr4()
-                .modify(|_, w| unsafe { w.sq15().bits(channel) }),
-            config::Sequence::Sixteen => self
-                .adc_reg
-                .sqr4()
-                .modify(|_, w| unsafe { w.sq16().bits(channel) }),
+                .modify(|_, w| unsafe { w.sq(i).bits(channel) }),
+            _ => unreachable!(),
         };
 
         //Set the sample time for the channel
         let st = u8::from(sample_time);
+        let i = if channel > 9 { channel - 10 } else { channel };
         unsafe {
             match channel {
-                0 => self.adc_reg.smpr1().modify(|_, w| w.smp0().bits(st)),
-                1 => self.adc_reg.smpr1().modify(|_, w| w.smp1().bits(st)),
-                2 => self.adc_reg.smpr1().modify(|_, w| w.smp2().bits(st)),
-                3 => self.adc_reg.smpr1().modify(|_, w| w.smp3().bits(st)),
-                4 => self.adc_reg.smpr1().modify(|_, w| w.smp4().bits(st)),
-                5 => self.adc_reg.smpr1().modify(|_, w| w.smp5().bits(st)),
-                6 => self.adc_reg.smpr1().modify(|_, w| w.smp6().bits(st)),
-                7 => self.adc_reg.smpr1().modify(|_, w| w.smp7().bits(st)),
-                8 => self.adc_reg.smpr1().modify(|_, w| w.smp8().bits(st)),
-                9 => self.adc_reg.smpr1().modify(|_, w| w.smp9().bits(st)),
-                10 => self.adc_reg.smpr2().modify(|_, w| w.smp10().bits(st)),
-                11 => self.adc_reg.smpr2().modify(|_, w| w.smp11().bits(st)),
-                12 => self.adc_reg.smpr2().modify(|_, w| w.smp12().bits(st)),
-                13 => self.adc_reg.smpr2().modify(|_, w| w.smp13().bits(st)),
-                14 => self.adc_reg.smpr2().modify(|_, w| w.smp14().bits(st)),
-                15 => self.adc_reg.smpr2().modify(|_, w| w.smp15().bits(st)),
-                16 => self.adc_reg.smpr2().modify(|_, w| w.smp16().bits(st)),
-                17 => self.adc_reg.smpr2().modify(|_, w| w.smp17().bits(st)),
-                18 => self.adc_reg.smpr2().modify(|_, w| w.smp18().bits(st)),
-                _ => unimplemented!(),
+                0..=9 => self.adc_reg.smpr1().modify(|_, w| w.smp(i).bits(st)),
+                10.. => self.adc_reg.smpr2().modify(|_, w| w.smp(i).bits(st)),
             };
         }
     }
