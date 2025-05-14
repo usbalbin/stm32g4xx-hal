@@ -34,18 +34,23 @@ impl HrControltExt for crate::stm32::HRTIM_COMMON {
     }
 }
 
-pub trait HrPwmBuilderExt<TIM, PSCL, PINS: ToHrOut<TIM>> {
-    fn finalize(self, control: &mut HrPwmControl) -> HrParts<TIM, PSCL, PINS::Out<PSCL>>;
+pub trait HrPwmBuilderExt<TIM, PSCL, PINS: ToHrOut<TIM>, > {
+    fn finalize(self, control: &mut HrPwmControl) -> HrParts<TIM, PSCL, PINS::Out<PSCL>, const IS_CR2_DAC_RST_TRIGGER: bool = false>;
 }
 macro_rules! impl_finalize {
     ($($TIMX:ident),+) => {$(
-        impl<PSCL: stm32_hrtim::HrtimPrescaler, PINS: HrtimPin<$TIMX>> HrPwmBuilderExt<$TIMX, PSCL, PINS>
-            for HrPwmBuilder<$TIMX, PSCL, stm32_hrtim::PreloadSource, PINS>
+        impl<PSCL, PINS, DAC_TRG, DAC_STP_TRG> HrPwmBuilderExt<$TIMX, PSCL, PINS>
+            for HrPwmBuilder<$TIMX, PSCL, stm32_hrtim::PreloadSource, PINS, DAC_TRG, DAC_STP_TRG>
+            where
+                PSCL: stm32_hrtim::HrtimPrescaler,
+                PINS: HrtimPin<$TIMX>,
+                DAC_RST_TRG: DacRstTrg,
+                DAC_STP_TRG: DacStpTrg,
         {
             fn finalize(
                 self,
                 control: &mut HrPwmControl,
-            ) -> HrParts<$TIMX, PSCL, <PINS as ToHrOut<$TIMX>>::Out<PSCL>> {
+            ) -> HrParts<$TIMX, PSCL, <PINS as ToHrOut<$TIMX>>::Out<PSCL>, DacStpTrg::IS_CR2> {
                 let pins = self._init(control);
                 pins.connect_to_hrtim();
                 unsafe { MaybeUninit::uninit().assume_init() }
@@ -94,8 +99,8 @@ macro_rules! pins_helper {
     ($TIMX:ty, $HrOutY:ident, $CHY:ident<$CHY_AF:literal>) => {
         //impl sealed::Sealed<$TIMX> for $CHY<GpioInputMode> {}
 
-        unsafe impl ToHrOut<$TIMX> for $CHY<gpio::DefaultMode> {
-            type Out<PSCL> = $HrOutY<$TIMX, PSCL>;
+        unsafe impl<const IS_DAC_RST_TRIGGER: bool = false, const IS_DAC_STP_TRIGGER: bool = false> ToHrOut<$TIMX, IS_DAC_RST_TRIGGER, IS_DAC_STP_TRIGGER> for $CHY<gpio::DefaultMode> {
+            type Out<PSCL> = $HrOutY<$TIMX, PSCL, IS_DAC_RST_TRIGGER, IS_DAC_STP_TRIGGER>;
         }
 
         impl HrtimPin<$TIMX> for $CHY<gpio::DefaultMode> {
