@@ -19,7 +19,8 @@ fugit = "0.3.7"
 stm32-usbd = { version = "0.7.0", optional = true }
 fixed = { version = "1.28.0", optional = true }
 embedded-io = "0.6"
-stm32-hrtim = { git = "https://github.com/usbalbin/stm32-hrtim", rev = "e8ab6db", optional = true }
+#stm32-hrtim = { git = "https://github.com/usbalbin/stm32-hrtim", rev = "e8ab6db", optional = true }
+stm32-hrtim = { path = "../stm32-hrtim", optional = true }
 
 [dependencies.cortex-m]
 version = "0.7.7"
@@ -172,6 +173,11 @@ path = "examples/hrtim/capture.rs"
 name = "hrtim-deadtime"
 required-features = ["hrtim"]
 path = "examples/hrtim/deadtime.rs"
+
+[[example]]
+name = "hrtim-adc-trigger-w-deadtime"
+required-features = ["hrtim"]
+path = "examples/hrtim/adc-trigger-w-deadtime.rs"
 
 [[example]]
 name = "hrtim-capture-dma"

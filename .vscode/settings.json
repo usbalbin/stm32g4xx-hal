@@ -10,5 +10,6 @@
     "defmt",
     "cordic",
     "hrtim"
-  ]
+  ],
+  "rust-analyzer.runnables.extraArgs": [ "--", "--chip=stm32g474retx" ],
 }
