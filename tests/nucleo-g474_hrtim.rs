@@ -6,6 +6,8 @@
 #[path = "../examples/utils/mod.rs"]
 mod utils;
 
+use utils::logger::debug;
+
 mod common;
 
 use common::test_pwm;
@@ -74,7 +76,7 @@ mod tests {
         let t_max_deviation = 2.micros();
         test_pwm(&timer, pin_num, t_lo, t_hi, t_max_deviation, 10);
 
-        delay.delay_ms(20); // Give the host some time to read defmt messages
+        delay.delay_ms(20); // Give the host some time to read logging messages
     }
 
     #[test]
@@ -101,7 +103,7 @@ mod tests {
 
 #[allow(non_snake_case)]
 fn setup_rcc_120MHz(pwr: stm32::PWR, rcc: stm32::RCC) -> Rcc {
-    defmt::info!("rcc");
+    debug!("rcc");
     // Set system frequency to 16MHz * 15/1/2 = 120MHz
     // This would lead to HrTim running at 120MHz * 32 = 3.84...
     let pwr = pwr.constrain().freeze();
@@ -231,6 +233,6 @@ fn deadtime_test(deadtime_rising_us: u32, deadtime_falling_us: u32) {
 
         let p = idr.idr(pin_num).is_high();
         let compl_p = idr.idr(complementary_pin_num).is_high();
-        defmt::assert!(!(p && compl_p), "Both outputs active at the same time");
+        assert!(!(p && compl_p), "Both outputs active at the same time");
     }
 }
