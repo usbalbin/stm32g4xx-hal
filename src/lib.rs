@@ -94,7 +94,10 @@ pub mod time;
 pub mod timer;
 // pub mod watchdog;
 
-#[cfg(all(feature = "hrtim", not(any(feature = "stm32g474", feature = "stm32g484"))))]
+#[cfg(all(
+    feature = "hrtim",
+    not(any(feature = "stm32g474", feature = "stm32g484"))
+))]
 compile_error!("`hrtim` is only available for stm32g474 and stm32g484");
 
 #[cfg(feature = "hrtim")]
