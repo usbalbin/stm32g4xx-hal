@@ -153,7 +153,7 @@ required-features = ["stm32g474", "defmt"]
 [[test]]
 name = "nucleo-g474_hrtim"
 harness = false
-required-features = ["stm32g474", "defmt"]
+required-features = ["stm32g474", "defmt", "hrtim"]
 
 [lib]
 test = false
