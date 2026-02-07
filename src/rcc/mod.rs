@@ -576,7 +576,6 @@ macro_rules! bus_struct {
         )+
     };
 }
-use bus_struct;
 
 bus_struct! {
     AHB1 => (AHB1ENR, ahb1enr, AHB1SMENR, ahb1smenr, AHB1RSTR, ahb1rstr, "Advanced High-performance Bus 1 (AHB1) registers"),
