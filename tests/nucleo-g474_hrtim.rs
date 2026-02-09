@@ -15,12 +15,12 @@ use fugit::{ExtU32, HertzU32, MicrosDurationU32};
 use stm32_hrtim::compare_register::HrCompareRegister;
 use stm32_hrtim::control::HrPwmControl;
 use stm32_hrtim::deadtime::DeadtimeConfig;
-use stm32_hrtim::output::{self, HrOutput, Output1Pin};
+use stm32_hrtim::output::{self, HrOutput};
 use stm32_hrtim::timer::HrTimer;
 use stm32_hrtim::{HrParts, HrPwmAdvExt as _, Pscl64};
 use stm32g4xx_hal::delay::SYSTDelayExt;
 use stm32g4xx_hal::gpio::{GpioExt, PinExt};
-use stm32g4xx_hal::hrtim::HrControltExt;
+use stm32g4xx_hal::hrtim::{HrControltExt, Out1Pin, Out2Pin};
 use stm32g4xx_hal::pwr::PwrExt;
 use stm32g4xx_hal::rcc::{self, Rcc, RccExt};
 
@@ -53,14 +53,13 @@ mod tests {
         let gpioa = dp.GPIOA.split(&mut rcc);
         let _pa1_important_dont_use_as_output = gpioa.pa1.into_floating_input();
         let pin1 = gpioa.pa8;
-        let pin_num = pin.pin_id();
+        let pin1_num = pin1.pin_id();
 
         let (
             HrParts {
                 timer: mut hrtimer,
                 mut cr1,
                 mut out1,
-                mut out2,
                 ..
             },
             mut hr_control,
@@ -74,15 +73,15 @@ mod tests {
         );
 
         cr1.set_duty(PERIOD / 2);
-        out.enable_rst_event(&cr1); // Set low on compare match with cr1
-        out.enable_set_event(&hrtimer); // Set high at new period
-        out.enable();
+        out1.enable_rst_event(&cr1); // Set low on compare match with cr1
+        out1.enable_set_event(&hrtimer); // Set high at new period
+        out1.enable();
         hrtimer.start(&mut hr_control.control);
 
         let t_hi = 500.micros();
         let t_lo = 500.micros();
         let t_max_deviation = 2.micros();
-        test_pwm(&timer, pin_num, t_lo, t_hi, t_max_deviation, 10);
+        test_pwm(&timer, pin1_num, t_lo, t_hi, t_max_deviation, 10);
 
         delay.delay_ms(20); // Give the host some time to read logging messages
     }
@@ -130,18 +129,15 @@ fn setup_rcc_120MHz(pwr: stm32::PWR, rcc: stm32::RCC) -> Rcc {
 
 fn setup<P1, P2>(
     pin1: P1,
-    pin1: P2,
+    pin2: P2,
     deadtime_cfg: Option<DeadtimeConfig>,
     hrtim_tima: stm32::HRTIM_TIMA,
     hrtim_common: stm32::HRTIM_COMMON,
     rcc: &mut Rcc,
-) -> (
-    HrParts<stm32::HRTIM_TIMA, Pscl64, P::Out<Pscl64>>,
-    HrPwmControl,
-)
+) -> (HrParts<stm32::HRTIM_TIMA, Pscl64>, HrPwmControl)
 where
-    P1: Output1Pin<stm32::HRTIM_TIMA>,
-    P2: Output2Pin<stm32::HRTIM_TIMA>,
+    P1: Out1Pin<stm32::HRTIM_TIMA>,
+    P2: Out2Pin<stm32::HRTIM_TIMA>,
 {
     use stm32g4xx_hal::hrtim::HrPwmBuilderExt;
     let (hr_control, ..) = hrtim_common.hr_control(rcc).wait_for_calibration();
@@ -155,7 +151,8 @@ where
         stm32::HRTIM_TIMA,
         Pscl64,
         stm32_hrtim::PreloadSource,
-        P,
+        P1,
+        P2,
     > = hrtim_tima
         .pwm_advanced(pin1, pin2)
         .prescaler(prescaler)
