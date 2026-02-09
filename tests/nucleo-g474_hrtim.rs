@@ -15,7 +15,7 @@ use fugit::{ExtU32, HertzU32, MicrosDurationU32};
 use stm32_hrtim::compare_register::HrCompareRegister;
 use stm32_hrtim::control::HrPwmControl;
 use stm32_hrtim::deadtime::DeadtimeConfig;
-use stm32_hrtim::output::HrOutput;
+use stm32_hrtim::output::{self, HrOutput, Output1Pin};
 use stm32_hrtim::timer::HrTimer;
 use stm32_hrtim::{HrParts, HrPwmAdvExt as _, Pscl64};
 use stm32g4xx_hal::delay::SYSTDelayExt;
@@ -52,18 +52,26 @@ mod tests {
 
         let gpioa = dp.GPIOA.split(&mut rcc);
         let _pa1_important_dont_use_as_output = gpioa.pa1.into_floating_input();
-        let pin = gpioa.pa8;
+        let pin1 = gpioa.pa8;
         let pin_num = pin.pin_id();
 
         let (
             HrParts {
                 timer: mut hrtimer,
                 mut cr1,
-                mut out,
+                mut out1,
+                mut out2,
                 ..
             },
             mut hr_control,
-        ) = setup(pin, None, dp.HRTIM_TIMA, dp.HRTIM_COMMON, &mut rcc);
+        ) = setup(
+            pin1,
+            output::NoPin,
+            None,
+            dp.HRTIM_TIMA,
+            dp.HRTIM_COMMON,
+            &mut rcc,
+        );
 
         cr1.set_duty(PERIOD / 2);
         out.enable_rst_event(&cr1); // Set low on compare match with cr1
@@ -120,8 +128,9 @@ fn setup_rcc_120MHz(pwr: stm32::PWR, rcc: stm32::RCC) -> Rcc {
     )
 }
 
-fn setup<P: stm32g4xx_hal::hrtim::HrtimPin<stm32::HRTIM_TIMA>>(
-    pins: P,
+fn setup<P1, P2>(
+    pin1: P1,
+    pin1: P2,
     deadtime_cfg: Option<DeadtimeConfig>,
     hrtim_tima: stm32::HRTIM_TIMA,
     hrtim_common: stm32::HRTIM_COMMON,
@@ -129,7 +138,11 @@ fn setup<P: stm32g4xx_hal::hrtim::HrtimPin<stm32::HRTIM_TIMA>>(
 ) -> (
     HrParts<stm32::HRTIM_TIMA, Pscl64, P::Out<Pscl64>>,
     HrPwmControl,
-) {
+)
+where
+    P1: Output1Pin<stm32::HRTIM_TIMA>,
+    P2: Output2Pin<stm32::HRTIM_TIMA>,
+{
     use stm32g4xx_hal::hrtim::HrPwmBuilderExt;
     let (hr_control, ..) = hrtim_common.hr_control(rcc).wait_for_calibration();
     let mut hr_control = hr_control.constrain();
@@ -144,7 +157,7 @@ fn setup<P: stm32g4xx_hal::hrtim::HrtimPin<stm32::HRTIM_TIMA>>(
         stm32_hrtim::PreloadSource,
         P,
     > = hrtim_tima
-        .pwm_advanced(pins)
+        .pwm_advanced(pin1, pin2)
         .prescaler(prescaler)
         .period(PERIOD);
     if let Some(dt) = deadtime_cfg {
@@ -185,12 +198,14 @@ fn deadtime_test(deadtime_rising_us: u32, deadtime_falling_us: u32) {
         HrParts {
             timer: mut hrtimer,
             mut cr1,
-            out: (mut out1, mut out2),
+            mut out1,
+            mut out2,
             ..
         },
         mut hr_control,
     ) = setup(
-        (pin, complementary_pin),
+        pin,
+        complementary_pin,
         Some(deadtime_cfg),
         dp.HRTIM_TIMA,
         dp.HRTIM_COMMON,
